@@ -18,10 +18,26 @@ RUN dotnet publish "hasheous-taskrunner/hasheous-taskrunner.csproj" --self-conta
 # Build runtime image - use minimal base since we have a self-contained executable
 FROM mcr.microsoft.com/dotnet/runtime-deps:8.0
 ENV INDOCKER=1
+
+RUN apt update && apt upgrade -y && \
+    # Create a non-root user for running the application
+    useradd -m -u 1000 appuser
+
 WORKDIR /App
-VOLUME [ "/root/.hasheous-taskrunner" ]
 
-RUN apt update && apt upgrade -y
-
+# Copy the published application
 COPY --from=build-env /App/out .
+
+# Set proper permissions for the application
+RUN chown -R appuser:appuser /App
+
+# Create a home directory for the appuser with proper permissions
+RUN mkdir -p /home/appuser/.hasheous-taskrunner && \
+    chown -R appuser:appuser /home/appuser
+
+VOLUME [ "/home/appuser/.hasheous-taskrunner" ]
+
+# Switch to non-root user
+USER appuser
+
 ENTRYPOINT ["./hasheous-taskrunner"]
