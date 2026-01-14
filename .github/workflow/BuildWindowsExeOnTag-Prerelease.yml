@@ -1,0 +1,54 @@
+name: Build Pre-release Windows Exe
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-preview.[0-9]'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]'
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      
+      - name: Install dotnet tool
+        run: dotnet tool install -g dotnetCampus.TagToVersion
+      
+      - name: Set tag to version
+        run: dotnet TagToVersion -t ${{ github.ref }}
+      
+      - name: Restore dependencies
+        run: dotnet restore hasheous-taskrunner/hasheous-taskrunner.csproj
+      
+      - name: Build and publish Windows exe (${{ matrix.arch }})
+        run: dotnet publish hasheous-taskrunner/hasheous-taskrunner.csproj -c Release -r win-${{ matrix.arch }} --self-contained -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+      
+      - name: Prepare artifact
+        run: |
+          $version = Get-Content build/Version.props | Select-String -Pattern '<Version>(.*?)</Version>' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+          $sourceExe = "hasheous-taskrunner/bin/Release/net8.0/win-${{ matrix.arch }}/publish/hasheous-taskrunner.exe"
+          $destExe = "hasheous-taskrunner-windows-${version}-${{ matrix.arch }}.exe"
+          Move-Item -Path $sourceExe -Destination $destExe
+          Write-Host "Created artifact: $destExe"
+        shell: pwsh
+      
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: hasheous-taskrunner-windows-*-${{ matrix.arch }}.exe
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
