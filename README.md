@@ -10,6 +10,8 @@ A distributed task runner service built in .NET 8.0 that registers with a centra
 - **Cross-Platform**: Runs on Windows, Linux, and macOS (x64 and ARM64)
 - **Self-Contained Deployment**: Distributes as single-file executable with runtime included
 - **Configuration Flexibility**: Loads settings from defaults, config files, environment variables, and CLI arguments
+- **Windows Service Support**: Install and manage as a Windows service for automatic startup
+- **Automatic Updates**: Periodically checks for new releases on GitHub and auto-updates when available
 
 ## Installation
 
@@ -43,6 +45,7 @@ The task runner is configured through a hierarchical system (later values overri
 | `APIKey` | (empty) | **Yes** | Authentication key for the server - can be retrieved from https://hasheous.org/index.html?page=account |
 | `ClientName` | System hostname | No | Name to register with the server |
 | `ollama_url` | (empty) | No | URL of Ollama service for AI tasks |
+| `EnableAutoUpdate` | `true` | No | Enable automatic update checking and installation from GitHub releases |
 
 ## Usage
 
@@ -98,16 +101,96 @@ Then run:
 ./hasheous-taskrunner --help
 ```
 
+## Windows Service Installation (Windows Only)
+
+On Windows systems, the task runner can be installed as a Windows service for automatic startup and management.
+
+### Installing as a Service
+
+Run the following command **as Administrator**:
+
+```bash
+hasheous-taskrunner install
+```
+
+This will:
+- Create a Windows service named "HasheousTaskRunner"
+- Set it to automatically start on system boot
+- Use the current executable path
+
+### Removing the Service
+
+Run the following command **as Administrator**:
+
+```bash
+hasheous-taskrunner remove
+```
+
+This will uninstall the Windows service.
+
+### Managing the Service
+
+Once installed, you can manage the service using:
+
+```bash
+# Start the service
+net start HasheousTaskRunner
+
+# Stop the service
+net stop HasheousTaskRunner
+
+# View service status
+sc query HasheousTaskRunner
+```
+
+Or through the Windows Services management console (`services.msc`).
+
+## Automatic Updates
+
+The task runner includes an automatic update mechanism that:
+
+1. **Checks at Startup**: Immediately checks for updates when the application starts
+2. **Background Checks**: Checks daily (every 24 hours) during operation
+3. **Smart Updates**: Only downloads updates when a newer stable release is available
+4. **Platform-Aware**: Automatically selects the correct executable for your platform and architecture
+5. **Safe Updates**: Creates a backup of the current executable before updating
+6. **Auto-Restart**: Automatically restarts the application with the new version
+
+### Disabling Auto-Updates
+
+To disable automatic updates, use any of these methods:
+
+**Command-line argument:**
+```bash
+./hasheous-taskrunner --EnableAutoUpdate false
+```
+
+**Environment variable:**
+```bash
+export EnableAutoUpdate=false
+./hasheous-taskrunner
+```
+
+**Configuration file** (`~/.hasheous-taskrunner/config.json`):
+```json
+{
+  "EnableAutoUpdate": "false"
+}
+```
+
+By default, auto-updates are **enabled**.
+
 ## Operation
 
 Once started, the task runner:
 
-1. **Registers** with the central server and declares its capabilities
-2. **Sends Heartbeats** every 30 seconds to maintain connection
-3. **Polls for Tasks** at regular intervals
-4. **Executes Tasks** as they arrive (currently supports AI description/tagging)
-5. **Reports Results** back to the server
-6. **Auto-reregisters** periodically to ensure server knows it's alive
+1. **Checks for Updates** immediately on startup and daily during operation
+2. **Registers** with the central server and declares its capabilities
+3. **Sends Heartbeats** every 30 seconds to maintain connection
+4. **Polls for Tasks** at regular intervals
+5. **Executes Tasks** as they arrive (currently supports AI description/tagging)
+6. **Reports Results** back to the server
+7. **Auto-reregisters** periodically to ensure server knows it's alive
 
 ### Graceful Shutdown
 
