@@ -37,7 +37,7 @@ jobs:
       
       - name: Prepare artifact
         run: |
-          version=$(grep -oP '(?<=<Version>).*?(?=</Version>)' build/Version.props)
+          version=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' build/Version.props | head -1)
           sourceExe="hasheous-taskrunner/bin/Release/net8.0/osx-${{ matrix.arch }}/publish/hasheous-taskrunner"
           destExe="hasheous-taskrunner-macos-${version}-${{ matrix.arch }}"
           mv "$sourceExe" "$destExe"
