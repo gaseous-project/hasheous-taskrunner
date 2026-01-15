@@ -62,8 +62,8 @@ namespace hasheous_taskrunner.Classes.Tasks
             // override model to use ollama
             string modelDescriptionOverride = "gemma3:12b";
             string modelTagOverride = "qwen3:8b";
-            bool applyDescriptionOverride = true;
-            bool applyTagOverride = true;
+            bool applyDescriptionOverride = false;
+            bool applyTagOverride = false;
             if (applyDescriptionOverride == false)
             {
                 modelDescriptionOverride = parameters != null && parameters.ContainsKey("prompt_description") ? parameters["prompt_description"] : "";
