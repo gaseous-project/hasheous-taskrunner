@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Net;
 using System.Reflection;
+using System.ServiceProcess;
 
 namespace hasheous_taskrunner.Classes
 {
@@ -141,7 +143,28 @@ namespace hasheous_taskrunner.Classes
                         {
                             Console.WriteLine($"  --{kvp.Key}    (default: {kvp.Value})");
                         }
+                        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                        {
+                            Console.WriteLine("\nWindows service options:");
+                            Console.WriteLine("  install    Install the task runner as a Windows service");
+                            Console.WriteLine("  remove     Remove the task runner from Windows services");
+                        }
                         Environment.Exit(0);
+                    }
+
+                    // Check for Windows service commands
+                    if (args.Length > 0 && Environment.OSVersion.Platform == PlatformID.Win32NT)
+                    {
+                        if (args[0].Equals("install", StringComparison.OrdinalIgnoreCase))
+                        {
+                            InstallWindowsService();
+                            Environment.Exit(0);
+                        }
+                        else if (args[0].Equals("remove", StringComparison.OrdinalIgnoreCase))
+                        {
+                            RemoveWindowsService();
+                            Environment.Exit(0);
+                        }
                     }
 
                     for (int i = 0; i < args.Length; i++)
@@ -267,6 +290,116 @@ namespace hasheous_taskrunner.Classes
             {
                 Console.WriteLine("Error saving authentication file: " + ex.Message);
                 Environment.Exit(1);
+            }
+        }
+
+        /// <summary>
+        /// Installs the task runner as a Windows service.
+        /// </summary>
+        private static void InstallWindowsService()
+        {
+            try
+            {
+                string serviceName = "HasheousTaskRunner";
+                string displayName = "Hasheous Task Runner";
+                string description = "Runs tasks assigned by the Hasheous service management system.";
+
+                // Get the full path to the executable
+                string executablePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
+
+                if (string.IsNullOrEmpty(executablePath))
+                {
+                    Console.WriteLine("Error: Unable to determine executable path.");
+                    return;
+                }
+
+                // Use sc.exe to create the service
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = "sc.exe",
+                    Arguments = $"create {serviceName} binPath= \"{executablePath}\" start= auto DisplayName= \"{displayName}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (Process process = Process.Start(psi)!)
+                {
+                    process.WaitForExit();
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+
+                    if (process.ExitCode == 0)
+                    {
+                        Console.WriteLine($"Successfully installed {displayName} service.");
+
+                        // Set service description
+                        ProcessStartInfo psi2 = new ProcessStartInfo
+                        {
+                            FileName = "sc.exe",
+                            Arguments = $"description {serviceName} \"{description}\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+
+                        using (Process process2 = Process.Start(psi2)!)
+                        {
+                            process2.WaitForExit();
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Error installing service: {error}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error installing Windows service: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Removes the task runner Windows service.
+        /// </summary>
+        private static void RemoveWindowsService()
+        {
+            try
+            {
+                string serviceName = "HasheousTaskRunner";
+                string displayName = "Hasheous Task Runner";
+
+                // Use sc.exe to delete the service
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = "sc.exe",
+                    Arguments = $"delete {serviceName}",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (Process process = Process.Start(psi)!)
+                {
+                    process.WaitForExit();
+                    string output = process.StandardOutput.ReadToEnd();
+                    string error = process.StandardError.ReadToEnd();
+
+                    if (process.ExitCode == 0)
+                    {
+                        Console.WriteLine($"Successfully removed {displayName} service.");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Error removing service: {error}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error removing Windows service: {ex.Message}");
             }
         }
     }
