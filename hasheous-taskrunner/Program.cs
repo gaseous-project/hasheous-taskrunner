@@ -6,6 +6,10 @@ using hasheous_taskrunner.Classes.Communication;
 // Load configuration
 Config.LoadConfiguration();
 
+// Check for updates at startup
+Console.WriteLine("Checking for updates...");
+await hasheous_taskrunner.Classes.Communication.Updater.CheckForUpdateAtStartup();
+
 // Register the task runner with the service host
 await hasheous_taskrunner.Classes.Communication.Registration.Initialize(Config.RegistrationParameters);
 
@@ -33,6 +37,9 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
 
         // Send heartbeat if due
         await hasheous_taskrunner.Classes.Communication.Heartbeat.SendHeartbeatIfDue();
+
+        // Check for updates if due
+        await hasheous_taskrunner.Classes.Communication.Updater.CheckForUpdateIfDue();
 
         // Fetch and execute tasks if due
         if (!hasheous_taskrunner.Classes.Communication.Tasks.IsRunningTask)
