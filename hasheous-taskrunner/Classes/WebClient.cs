@@ -118,9 +118,17 @@ namespace TaskRunner.Classes
             {
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
             };
-            return new HttpClient(handler);
+            var httpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)  // Prevent infinite hangs
+            };
+            return httpClient;
 #else
-            return new HttpClient();
+            var httpClient = new HttpClient()
+            {
+                Timeout = TimeSpan.FromSeconds(30)  // Prevent infinite hangs
+            };
+            return httpClient;
 #endif
         }
 

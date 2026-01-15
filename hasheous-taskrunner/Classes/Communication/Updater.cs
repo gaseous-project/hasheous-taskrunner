@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -20,6 +21,8 @@ namespace hasheous_taskrunner.Classes.Communication
         {
             // Set a user agent for GitHub API requests
             httpClient.DefaultRequestHeaders.Add("User-Agent", "hasheous-taskrunner");
+            // Set timeout to prevent hanging
+            httpClient.Timeout = TimeSpan.FromSeconds(120);
         }
 
         /// <summary>
@@ -139,11 +142,14 @@ namespace hasheous_taskrunner.Classes.Communication
         }
 
         /// <summary>
-        /// Downloads and applies the update.
+        /// Downloads and applies the update with security verification.
         /// </summary>
         /// <param name="release">The release to download.</param>
         private static async Task DownloadAndApplyUpdate(GitHubRelease release)
         {
+            string? tempFilePath = null;
+            string? backupPath = null;
+
             try
             {
                 string executableName = GetExecutableName();
@@ -156,39 +162,185 @@ namespace hasheous_taskrunner.Classes.Communication
                     return;
                 }
 
+                // Find the checksum file
+                var checksumAsset = FindMatchingAsset(release.Assets, executableName + ".sha256");
+                string? expectedChecksum = null;
+
+                if (checksumAsset != null)
+                {
+                    Console.WriteLine("[INFO] Checksum file found, will verify download integrity.");
+                    try
+                    {
+                        var checksumContent = await httpClient.GetStringAsync(checksumAsset.BrowserDownloadUrl);
+                        expectedChecksum = checksumContent.Split(' ', '\t', '\n', '\r')[0].Trim();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[WARNING] Failed to download checksum file: {ex.Message}");
+                        Console.WriteLine("[WARNING] Proceeding without checksum verification (NOT RECOMMENDED).");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[WARNING] No checksum file found for this release.");
+                    Console.WriteLine("[WARNING] Cannot verify download integrity (NOT RECOMMENDED).");
+                }
+
                 Console.WriteLine($"Downloading update from {asset.BrowserDownloadUrl}");
 
-                // Download the update
+                // Download to a temporary file first
+                tempFilePath = Path.Combine(Path.GetTempPath(), $"hasheous-update-{Guid.NewGuid()}");
                 byte[] updateData = await httpClient.GetByteArrayAsync(asset.BrowserDownloadUrl);
+                await File.WriteAllBytesAsync(tempFilePath, updateData);
+
+                // Verify checksum if available
+                if (!string.IsNullOrEmpty(expectedChecksum))
+                {
+                    string actualChecksum = CalculateSHA256(tempFilePath);
+                    if (!actualChecksum.Equals(expectedChecksum, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"[ERROR] Checksum verification FAILED!");
+                        Console.WriteLine($"[ERROR] Expected: {expectedChecksum}");
+                        Console.WriteLine($"[ERROR] Actual:   {actualChecksum}");
+                        Console.WriteLine($"[ERROR] Update aborted for security reasons.");
+                        File.Delete(tempFilePath);
+                        return;
+                    }
+                    Console.WriteLine("[INFO] Checksum verification PASSED.");
+                }
 
                 // Get the current executable path
                 string currentExecutablePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
                 if (string.IsNullOrEmpty(currentExecutablePath))
                 {
-                    Console.WriteLine("Error: Unable to determine current executable path.");
+                    Console.WriteLine("[ERROR] Unable to determine current executable path.");
+                    if (File.Exists(tempFilePath)) File.Delete(tempFilePath);
                     return;
                 }
 
                 // Create a backup of the current executable
-                string backupPath = currentExecutablePath + ".backup";
+                backupPath = currentExecutablePath + ".backup";
                 if (File.Exists(backupPath))
                 {
                     File.Delete(backupPath);
                 }
-                File.Copy(currentExecutablePath, backupPath);
+                File.Copy(currentExecutablePath, backupPath, true);
+                Console.WriteLine($"[INFO] Backup created: {backupPath}");
 
-                // Write the update
-                File.WriteAllBytes(currentExecutablePath, updateData);
-                Console.WriteLine($"Update installed successfully: {release.Tag}");
-                Console.WriteLine("Restarting application...");
+                // On Windows, we can't overwrite a running executable directly
+                // We need to use a different approach
+                if (OperatingSystem.IsWindows())
+                {
+                    // Move the new file to a .new extension
+                    string newPath = currentExecutablePath + ".new";
+                    if (File.Exists(newPath))
+                    {
+                        File.Delete(newPath);
+                    }
+                    File.Move(tempFilePath, newPath);
 
-                // Restart the application
-                RestartApplication(currentExecutablePath);
+                    // Create a batch script to replace the executable after exit
+                    string batchScript = Path.Combine(Path.GetTempPath(), "hasheous-update.bat");
+                    var batchLines = new[]
+                    {
+                        "@echo off",
+                        "echo Applying update...",
+                        "timeout /t 2 /nobreak > nul",
+                        $"move /Y \"{newPath}\" \"{currentExecutablePath}\"",
+                        "if errorlevel 1 (",
+                        "    echo Update failed, restoring backup...",
+                        $"    move /Y \"{backupPath}\" \"{currentExecutablePath}\"",
+                        "    echo Update rolled back.",
+                        "    pause",
+                        "    exit /b 1",
+                        ")",
+                        "echo Update applied successfully.",
+                        $"start \"\" \"{currentExecutablePath}\"",
+                        $"del \"{backupPath}\"",
+                        "del \"%~f0\""
+                    };
+                    await File.WriteAllLinesAsync(batchScript, batchLines);
+
+                    Console.WriteLine($"[INFO] Update staged. Restarting...");
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/c \"{batchScript}\"",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    });
+
+                    Environment.Exit(0);
+                }
+                else
+                {
+                    // On Unix-like systems, we can replace the executable while it's running
+                    // The OS will keep the old file in memory for the running process
+                    File.Move(tempFilePath, currentExecutablePath, true);
+
+                    // Make it executable on Unix-like systems
+                    if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                    {
+                        Process.Start("chmod", $"+x \"{currentExecutablePath}\"")?.WaitForExit();
+                    }
+
+                    Console.WriteLine($"[INFO] Update installed successfully: {release.Tag}");
+                    Console.WriteLine("[INFO] Restarting application...");
+
+                    RestartApplication(currentExecutablePath);
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error applying update: {ex.Message}");
+                Console.WriteLine($"[ERROR] Failed to apply update: {ex.Message}");
+                Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+
+                // Attempt to restore backup if update failed
+                if (!string.IsNullOrEmpty(backupPath) && File.Exists(backupPath))
+                {
+                    try
+                    {
+                        string currentExecutablePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                        if (!string.IsNullOrEmpty(currentExecutablePath) && File.Exists(currentExecutablePath))
+                        {
+                            File.Delete(currentExecutablePath);
+                            File.Move(backupPath, currentExecutablePath);
+                            Console.WriteLine("[INFO] Backup restored successfully.");
+                        }
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        Console.WriteLine($"[ERROR] Failed to restore backup: {restoreEx.Message}");
+                        Console.WriteLine($"[ERROR] Manual intervention may be required.");
+                        Console.WriteLine($"[ERROR] Backup location: {backupPath}");
+                    }
+                }
             }
+            finally
+            {
+                // Clean up temporary file
+                if (!string.IsNullOrEmpty(tempFilePath) && File.Exists(tempFilePath))
+                {
+                    try
+                    {
+                        File.Delete(tempFilePath);
+                    }
+                    catch { /* Best effort cleanup */ }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calculates the SHA256 hash of a file.
+        /// </summary>
+        /// <param name="filePath">The path to the file.</param>
+        /// <returns>The SHA256 hash as a hexadecimal string.</returns>
+        private static string CalculateSHA256(string filePath)
+        {
+            using var sha256 = SHA256.Create();
+            using var stream = File.OpenRead(filePath);
+            byte[] hash = sha256.ComputeHash(stream);
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
         }
 
         /// <summary>
@@ -227,7 +379,7 @@ namespace hasheous_taskrunner.Classes.Communication
 
             if (OperatingSystem.IsWindows())
             {
-                return $"{baseName}-win-{arch}.exe";
+                return $"{baseName}-windows-{arch}.exe";
             }
             else if (OperatingSystem.IsLinux())
             {
@@ -235,7 +387,7 @@ namespace hasheous_taskrunner.Classes.Communication
             }
             else if (OperatingSystem.IsMacOS())
             {
-                return $"{baseName}-osx-{arch}";
+                return $"{baseName}-macos-{arch}";
             }
 
             return baseName;
