@@ -19,6 +19,15 @@ namespace hasheous_taskrunner.Classes
         // Only API key is required for task runner to operate.
 
         /// <summary>
+        /// Configuration keys that contain sensitive information and should not be logged or displayed.
+        /// </summary>
+        private static readonly HashSet<string> SensitiveConfigKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "APIKey",
+            "ollama_url"
+        };
+
+        /// <summary>
         /// Loads the configuration from default values, configuration file, environment variables, and command line arguments.
         /// </summary>
         public static void LoadConfiguration()
@@ -131,6 +140,11 @@ namespace hasheous_taskrunner.Classes
                         if (!string.IsNullOrEmpty(envValue))
                         {
                             currentConfig[key] = envValue;
+                            if (SensitiveConfigKeys.Contains(key))
+                            {
+                                Console.WriteLine($"[WARNING] Configuration option '{key}' loaded from environment variable. " +
+                                                $"This is visible to other processes. Consider using config file instead.");
+                            }
                         }
                     }
 
@@ -142,7 +156,8 @@ namespace hasheous_taskrunner.Classes
                         Console.WriteLine("Available options:");
                         foreach (var kvp in defaultConfig)
                         {
-                            Console.WriteLine($"  --{kvp.Key}    (default: {kvp.Value})");
+                            string displayValue = SensitiveConfigKeys.Contains(kvp.Key) ? "[REDACTED]" : kvp.Value;
+                            Console.WriteLine($"  --{kvp.Key}    (default: {displayValue})");
                         }
                         if (Environment.OSVersion.Platform == PlatformID.Win32NT)
                         {
@@ -198,6 +213,24 @@ namespace hasheous_taskrunner.Classes
 
                 return currentConfig;
             }
+        }
+
+        /// <summary>
+        /// Gets a configuration value with optional redaction for sensitive data.
+        /// Sensitive values are never logged or displayed in console output.
+        /// </summary>
+        /// <param name="key">The configuration key to retrieve.</param>
+        /// <param name="includeSensitive">If false, sensitive values are redacted. Default is false.</param>
+        /// <returns>The configuration value, or a redacted string for sensitive values.</returns>
+        public static string GetSafeConfigValue(string key, bool includeSensitive = false)
+        {
+            if (!Configuration.ContainsKey(key))
+                return "";
+
+            if (!includeSensitive && SensitiveConfigKeys.Contains(key))
+                return "[REDACTED]";
+
+            return Configuration[key];
         }
 
         /// <summary>

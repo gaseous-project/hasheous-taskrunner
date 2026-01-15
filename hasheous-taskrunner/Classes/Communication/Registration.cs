@@ -11,6 +11,8 @@ namespace hasheous_taskrunner.Classes.Communication
     {
         private static DateTime lastRegistrationTime = DateTime.MinValue;
         private static readonly TimeSpan registrationInterval = TimeSpan.FromMinutes(60);
+        private static readonly Random retryRandom = new Random();
+        private const int MaxRetries = 10;
 
         /// <summary>
         /// Initializes registration-related resources; implement registration logic here.
@@ -82,14 +84,22 @@ namespace hasheous_taskrunner.Classes.Communication
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Registration failed: {ex.Message}");
-                    if (retryCount >= 10)
+                    Console.WriteLine($"[ERROR] Registration failed: {ex.Message}");
+                    if (retryCount >= MaxRetries)
                     {
-                        Console.WriteLine("Maximum retry attempts reached. Aborting.");
+                        Console.WriteLine($"[ERROR] Maximum retry attempts ({MaxRetries}) reached. Aborting.");
                         Environment.Exit(1);
                     }
-                    Console.WriteLine($"Retrying in 5 seconds... (Attempt {retryCount})");
-                    System.Threading.Thread.Sleep(5000);
+
+                    // Exponential backoff with jitter: 1s → 2s → 4s → 8s → 16s → 32s → max 60s
+                    int baseDelayMs = 1000;  // 1 second base
+                    int maxDelayMs = 60000;  // 1 minute max
+                    int exponentialDelay = baseDelayMs * (int)Math.Pow(2, Math.Min(retryCount - 1, 5));
+                    int jitter = retryRandom.Next(0, 1000);  // Random 0-1000ms jitter
+                    int delayMs = Math.Min(exponentialDelay, maxDelayMs) + jitter;
+
+                    Console.WriteLine($"[INFO] Retrying in {delayMs}ms... (Attempt {retryCount}/{MaxRetries})");
+                    await Task.Delay(delayMs);
                 }
             }
         }

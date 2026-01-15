@@ -12,6 +12,9 @@ A distributed task runner service built in .NET 8.0 that registers with a centra
 - **Configuration Flexibility**: Loads settings from defaults, config files, environment variables, and CLI arguments
 - **Windows Service Support**: Install and manage as a Windows service for automatic startup
 - **Automatic Updates**: Periodically checks for new releases on GitHub and auto-updates when available
+- **Security Hardening**: API key protection, SHA256 checksum verification for updates, secure credential handling
+- **Resilient Error Handling**: Comprehensive error handling with component isolation and automatic recovery
+- **Smart Retry Logic**: Exponential backoff with jitter for graceful failure recovery
 
 ## Installation
 
@@ -46,6 +49,8 @@ The task runner is configured through a hierarchical system (later values overri
 | `ClientName` | System hostname | No | Name to register with the server |
 | `ollama_url` | (empty) | No | URL of Ollama service for AI tasks |
 | `EnableAutoUpdate` | `true` | No | Enable automatic update checking and installation from GitHub releases |
+
+**Security Note**: Sensitive configuration values (`APIKey`, `ollama_url`) are automatically redacted in help text and logs. When loading from environment variables, the task runner will warn you that these values are visible to other processes and recommend using the configuration file instead.
 
 ## Usage
 
@@ -153,8 +158,25 @@ The task runner includes an automatic update mechanism that:
 2. **Background Checks**: Checks daily (every 24 hours) during operation
 3. **Smart Updates**: Only downloads updates when a newer stable release is available
 4. **Platform-Aware**: Automatically selects the correct executable for your platform and architecture
-5. **Safe Updates**: Creates a backup of the current executable before updating
-6. **Auto-Restart**: Automatically restarts the application with the new version
+5. **Secure Downloads**: Verifies SHA256 checksums when available to ensure integrity
+6. **Safe Updates**: Creates a backup of the current executable before updating
+7. **Atomic Operations**: Uses atomic file operations to prevent corruption
+8. **Auto-Restart**: Automatically restarts the application with the new version
+9. **Rollback Support**: Automatically rolls back to backup if update fails
+
+### Security
+
+All GitHub releases include:
+- **SHA256 Checksums** (`.sha256` files) - Automatically verified during updates
+- **Build Provenance Attestations** - Cryptographically signed build records
+- **Software Bill of Materials (SBOM)** - SPDX-format dependency transparency
+
+The updater will:
+- ✅ Verify checksums before applying updates (when available)
+- ✅ Abort updates if checksums don't match
+- ⚠️ Warn if checksum files are missing
+- ✅ Create backups before modifying files
+- ✅ Automatically rollback on failure
 
 ### Disabling Auto-Updates
 
@@ -179,6 +201,38 @@ export EnableAutoUpdate=false
 ```
 
 By default, auto-updates are **enabled**.
+
+## Reliability and Error Handling
+
+The task runner includes comprehensive error handling and resilience features:
+
+### Component Isolation
+- Each component (registration, heartbeat, updates, tasks) has dedicated error handling
+- Component failures are isolated and logged without crashing the service
+- Service continues operating even when individual components fail
+
+### Smart Retry Logic
+- **Exponential Backoff**: Retry delays increase exponentially (1s → 2s → 4s → 8s → 16s → 32s → max 60s)
+- **Jitter**: Random 0-1000ms added to prevent thundering herd
+- **Max Retries**: Limited to 10 attempts before giving up
+- **Graceful Degradation**: Service remains operational during transient failures
+
+### Network Resilience
+- **HTTP Timeouts**: All HTTP requests timeout after 30 seconds (WebClient) or 120 seconds (Updater)
+- **Automatic Reconnection**: Re-registration and heartbeat recovery
+- **Connection Monitoring**: Tracks connectivity and adjusts behavior
+
+### Error Logging
+All errors are logged with standardized prefixes:
+- `[ERROR]` - Component failures and unexpected errors
+- `[WARNING]` - Non-critical issues and security warnings
+- `[INFO]` - Normal operational messages
+- `[FATAL]` - Unrecoverable errors requiring shutdown
+
+### Global Safety Net
+- **Unhandled Exception Handler**: Catches any exceptions that escape component handlers
+- **Emergency Cleanup**: Attempts to unregister from server even during fatal errors
+- **Detailed Diagnostics**: Full stack traces and exception details logged
 
 ## Operation
 

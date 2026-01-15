@@ -66,11 +66,11 @@ namespace hasheous_taskrunner.Classes.Tasks
             bool applyTagOverride = false;
             if (applyDescriptionOverride == false)
             {
-                modelDescriptionOverride = parameters != null && parameters.ContainsKey("prompt_description") ? parameters["prompt_description"] : "";
+                modelDescriptionOverride = parameters != null && parameters.ContainsKey("model_description") ? parameters["model_description"] : "";
             }
             if (applyTagOverride == false)
             {
-                modelTagOverride = parameters != null && parameters.ContainsKey("prompt_tags") ? parameters["prompt_tags"] : "";
+                modelTagOverride = parameters != null && parameters.ContainsKey("model_tags") ? parameters["model_tags"] : "";
             }
 
             // generate the description
