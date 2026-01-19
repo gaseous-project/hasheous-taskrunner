@@ -19,7 +19,7 @@ RUN dotnet publish "hasheous-taskrunner/hasheous-taskrunner.csproj" --self-conta
 FROM mcr.microsoft.com/dotnet/runtime-deps:8.0
 ENV INDOCKER=1
 
-RUN apt update && apt upgrade -y && \
+RUN apt update && apt upgrade -y && apt install -y iputils-ping && \
     # Create a non-root user for running the application
     useradd -m -u 1000 appuser
 
