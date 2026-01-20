@@ -259,6 +259,7 @@ namespace hasheous_taskrunner.Classes.Communication
 
                     // Create a batch script to replace the executable after exit
                     string batchScript = Path.Combine(Path.GetTempPath(), "hasheous-update.bat");
+                    string args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(a => $"\"{a}\""));
                     var batchLines = new[]
                     {
                         "@echo off",
@@ -273,7 +274,7 @@ namespace hasheous_taskrunner.Classes.Communication
                         "    exit /b 1",
                         ")",
                         "echo Update applied successfully.",
-                        $"start \"\" \"{currentExecutablePath}\"",
+                        $"start \"\" \"{currentExecutablePath}\" {args}",
                         $"del \"{backupPath}\"",
                         "del \"%~f0\""
                     };
@@ -305,7 +306,7 @@ namespace hasheous_taskrunner.Classes.Communication
                     Console.WriteLine($"[INFO] Update installed successfully: {release.Tag}");
                     Console.WriteLine("[INFO] Restarting application...");
 
-                    RestartApplication(currentExecutablePath);
+                    RestartApplication(currentExecutablePath, Environment.GetCommandLineArgs().Skip(1).ToArray());
                 }
             }
             catch (Exception ex)
@@ -415,7 +416,8 @@ namespace hasheous_taskrunner.Classes.Communication
         /// Restarts the application with the new version.
         /// </summary>
         /// <param name="executablePath">The path to the updated executable.</param>
-        private static void RestartApplication(string executablePath)
+        /// <param name="args">Command-line arguments to pass to the new process.</param>
+        private static void RestartApplication(string executablePath, string[]? args = null)
         {
             try
             {
@@ -424,6 +426,15 @@ namespace hasheous_taskrunner.Classes.Communication
                     FileName = executablePath,
                     UseShellExecute = false
                 };
+
+                // Add command-line arguments if provided
+                if (args != null && args.Length > 0)
+                {
+                    foreach (var arg in args)
+                    {
+                        psi.ArgumentList.Add(arg);
+                    }
+                }
 
                 Process.Start(psi);
 
