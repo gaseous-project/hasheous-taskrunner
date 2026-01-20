@@ -152,7 +152,25 @@ namespace hasheous_taskrunner.Classes.Communication
 
             try
             {
-                string executableName = GetExecutableName();
+                // filename format is hasheous-taskrunner-<platform>-<version>-<arch>[.exe]
+                string executableName = "hasheous-taskrunner-";
+                if (OperatingSystem.IsWindows())
+                {
+                    executableName += $"windows-{release.Tag.TrimStart('v')}-{RuntimeInformation.ProcessArchitecture.ToString().ToLower()}.exe";
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    executableName += $"linux-{release.Tag.TrimStart('v')}-{RuntimeInformation.ProcessArchitecture.ToString().ToLower()}";
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    executableName += $"macos-{release.Tag.TrimStart('v')}-{RuntimeInformation.ProcessArchitecture.ToString().ToLower()}";
+                }
+                else
+                {
+                    Console.WriteLine("Unsupported operating system for auto-update.");
+                    return;
+                }
 
                 // Find the asset matching the current platform and architecture
                 var asset = FindMatchingAsset(release.Assets, executableName);
