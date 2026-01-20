@@ -77,6 +77,20 @@ namespace hasheous_taskrunner.Classes.Communication
                 if (latestVersion > currentVersion)
                 {
                     Console.WriteLine($"Update available: {currentVersion} -> {latestVersion}");
+
+                    // Check if running in a development environment or docker container
+                    if (IsRunningInDevelopmentEnvironment())
+                    {
+                        Console.WriteLine("[INFO] Running in development environment. Update skipped (auto-update disabled).");
+                        return;
+                    }
+
+                    if (IsRunningInDockerContainer())
+                    {
+                        Console.WriteLine("[INFO] Running in Docker container. Update skipped (auto-update disabled).");
+                        return;
+                    }
+
                     await DownloadAndApplyUpdate(latestRelease);
                 }
             }
@@ -372,6 +386,78 @@ namespace hasheous_taskrunner.Classes.Communication
                 ? Config.Configuration["EnableAutoUpdate"]
                 : "true";
             return enableAutoUpdate.Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Checks if the application is running in a development environment.
+        /// </summary>
+        /// <returns>True if running in development environment, false otherwise.</returns>
+        private static bool IsRunningInDevelopmentEnvironment()
+        {
+            // Check if debugger is attached
+            if (System.Diagnostics.Debugger.IsAttached)
+            {
+                return true;
+            }
+
+            // Check for development environment variable
+            string environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "";
+            if (environment.Equals("Development", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Check if running from a project directory (bin/Debug or obj folder in path)
+            string processPath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
+            if (processPath.Contains("bin/Debug") || processPath.Contains("bin\\Debug") || processPath.Contains("/obj/"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if the application is running in a Docker container.
+        /// </summary>
+        /// <returns>True if running in Docker container, false otherwise.</returns>
+        private static bool IsRunningInDockerContainer()
+        {
+            // Check for /.dockerenv file (present in Docker containers)
+            if (File.Exists("/.dockerenv"))
+            {
+                return true;
+            }
+
+            // Check for DOCKER_CONTAINER environment variable
+            string dockerContainer = Environment.GetEnvironmentVariable("DOCKER_CONTAINER") ?? "";
+            if (!string.IsNullOrEmpty(dockerContainer))
+            {
+                return true;
+            }
+
+            // Check /proc/self/cgroup for docker (Linux only)
+            if (OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    string cgroupFile = "/proc/self/cgroup";
+                    if (File.Exists(cgroupFile))
+                    {
+                        string content = File.ReadAllText(cgroupFile);
+                        if (content.Contains("docker") || content.Contains("containerd") || content.Contains("kubernetes"))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                catch
+                {
+                    // If we can't read the file, assume we're not in a container
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
