@@ -1,20 +1,15 @@
 # Hasheous Task Runner
 
-A distributed task runner service built in .NET 8.0 that registers with a central task server and executes queued tasks. It supports AI-powered task processing and can be deployed as a self-contained executable on any platform.
+A distributed task runner service built in .NET that registers with a central task server and executes queued tasks. It supports AI-powered task processing and can be deployed as a self-contained executable on any platform.
 
 ## Features
 
 - **Distributed Architecture**: Registers with Hasheous and processes tasks asynchronously
 - **AI Task Support**: Executes AI description generation and tagging tasks via Ollama integration
-- **Capability-Based System**: Declares capabilities (Internet, Disk Space, AI) to the server
 - **Cross-Platform**: Runs on Windows, Linux, and macOS (x64 and ARM64)
 - **Self-Contained Deployment**: Distributes as single-file executable with runtime included
-- **Configuration Flexibility**: Loads settings from defaults, config files, environment variables, and CLI arguments
 - **Windows Service Support**: Install and manage as a Windows service for automatic startup
 - **Automatic Updates**: Periodically checks for new releases on GitHub and auto-updates when available
-- **Security Hardening**: API key protection, SHA256 checksum verification for updates, secure credential handling
-- **Resilient Error Handling**: Comprehensive error handling with component isolation and automatic recovery
-- **Smart Retry Logic**: Exponential backoff with jitter for graceful failure recovery
 
 ## Installation
 
@@ -25,7 +20,6 @@ A distributed task runner service built in .NET 8.0 that registers with a centra
 ### Download
 
 Pre-built executables are available for:
-- **Linux**: x64, ARM64
 - **Windows**: x64, ARM64
 - **macOS**: x64 (Intel), ARM64 (Apple Silicon)
 
@@ -150,6 +144,39 @@ sc query HasheousTaskRunner
 
 Or through the Windows Services management console (`services.msc`).
 
+## Docker and Docker Compose
+
+The task runner can be started via Docker at the command line with:
+
+```bash
+docker run -d -e APIKey=your-api-key-here -e ollama_url=http://localhost:11434 gaseousgames/hasheous-taskrunner
+```
+
+Alternatively the the task runner can be started with a docker-compose.yml file similar to the following:
+
+```yml
+services:
+  hasheous-taskrunner:
+    container_name: hasheous-taskrunner
+    image: gaseousgames/hasheous-taskrunner
+    restart: unless-stopped
+    volumes:
+      - hasheous-taskrunner:/home/appuser/.hasheous-taskrunner
+    environment:
+      - TZ=Australia/Sydney
+      - HostAddress=https://hasheous.org/
+      - APIKey=your-api-key-here
+      - ollama_url=http://localhost:11434
+volumes:
+  hasheous-taskrunner:
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
 ## Automatic Updates
 
 The task runner includes an automatic update mechanism that:
@@ -164,6 +191,8 @@ The task runner includes an automatic update mechanism that:
 8. **Auto-Restart**: Automatically restarts the application with the new version
 9. **Rollback Support**: Automatically rolls back to backup if update fails
 
+**Note**: Automatic updates are disabled when running in a Docker container. The check will be run and a warning displayed if a new version is available, but no update will occur. Pull the latest image to update the runner.
+
 ### Security
 
 All GitHub releases include:
@@ -172,11 +201,11 @@ All GitHub releases include:
 - **Software Bill of Materials (SBOM)** - SPDX-format dependency transparency
 
 The updater will:
-- ✅ Verify checksums before applying updates (when available)
-- ✅ Abort updates if checksums don't match
-- ⚠️ Warn if checksum files are missing
-- ✅ Create backups before modifying files
-- ✅ Automatically rollback on failure
+- Verify checksums before applying updates (when available)
+- Abort updates if checksums don't match
+- Warn if checksum files are missing
+- Create backups before modifying files
+- Automatically rollback on failure
 
 ### Disabling Auto-Updates
 
@@ -201,38 +230,6 @@ export EnableAutoUpdate=false
 ```
 
 By default, auto-updates are **enabled**.
-
-## Reliability and Error Handling
-
-The task runner includes comprehensive error handling and resilience features:
-
-### Component Isolation
-- Each component (registration, heartbeat, updates, tasks) has dedicated error handling
-- Component failures are isolated and logged without crashing the service
-- Service continues operating even when individual components fail
-
-### Smart Retry Logic
-- **Exponential Backoff**: Retry delays increase exponentially (1s → 2s → 4s → 8s → 16s → 32s → max 60s)
-- **Jitter**: Random 0-1000ms added to prevent thundering herd
-- **Max Retries**: Limited to 10 attempts before giving up
-- **Graceful Degradation**: Service remains operational during transient failures
-
-### Network Resilience
-- **HTTP Timeouts**: All HTTP requests timeout after 30 seconds (WebClient) or 120 seconds (Updater)
-- **Automatic Reconnection**: Re-registration and heartbeat recovery
-- **Connection Monitoring**: Tracks connectivity and adjusts behavior
-
-### Error Logging
-All errors are logged with standardized prefixes:
-- `[ERROR]` - Component failures and unexpected errors
-- `[WARNING]` - Non-critical issues and security warnings
-- `[INFO]` - Normal operational messages
-- `[FATAL]` - Unrecoverable errors requiring shutdown
-
-### Global Safety Net
-- **Unhandled Exception Handler**: Catches any exceptions that escape component handlers
-- **Emergency Cleanup**: Attempts to unregister from server even during fatal errors
-- **Detailed Diagnostics**: Full stack traces and exception details logged
 
 ## Operation
 
@@ -263,30 +260,11 @@ The task runner declares the following capabilities to the server:
 | **Disk Space** | Dynamic | Available free disk space monitoring |
 | **AI** | Conditional | AI task processing (requires Ollama URL configured) |
 
+Tasks have different requirements and may not execute if the above capabilities aren't present (enough disk space, availability of AI, etc).
+
 ## Supported Tasks
 
-### AI Description and Tagging
-
-Generates AI-powered descriptions and tags for content using Ollama.
-
-**Parameters:**
-- `input`: Content to describe and tag
-- Additional parameters as required by the configured Ollama model
-
-**Response:**
-- `description`: Generated description
-- `tags`: Generated tags (comma-separated or list)
-
-## Docker Deployment
-
-The project includes a Docker configuration for containerized deployment:
-
-```bash
-cd hasheous-taskrunner/Docker
-docker-compose up
-```
-
-See [Docker/Dockerfile](hasheous-taskrunner/Docker/Dockerfile) for details.
+- **AI Description and Tagging**: Generates AI-powered descriptions and tags for content using Ollama. Model selection and prompt is delievered from the server.
 
 ## Building
 
@@ -321,30 +299,6 @@ dotnet publish -c Release --no-self-contained
 
 See [BUILD.md](hasheous-taskrunner/BUILD.md) for detailed build information.
 
-## Project Structure
-
-```
-hasheous-taskrunner/
-├── Program.cs                  # Application entry point
-├── Classes/
-│   ├── Config.cs              # Configuration management
-│   ├── WebClient.cs           # HTTP client for server communication
-│   ├── Capabilities/          # Capability implementations
-│   │   ├── ICapability.cs     # Capability interface
-│   │   ├── DiskSpaceCapability.cs
-│   │   ├── InternetCapability.cs
-│   │   └── OllamaCapability.cs
-│   ├── Communication/         # Server communication
-│   │   ├── Registration.cs    # Worker registration
-│   │   ├── Heartbeat.cs       # Heartbeat signals
-│   │   ├── Tasks.cs           # Task fetching and execution
-│   │   └── Common.cs          # Shared communication utilities
-│   └── Tasks/                 # Task implementations
-│       ├── ITask.cs           # Task interface
-│       └── AITask.cs          # AI task implementation
-└── Docker/                    # Container configuration
-```
-
 ## Troubleshooting
 
 ### Task runner fails to start
@@ -364,7 +318,6 @@ Check that you've provided the required API key:
 
 - Verify `ollama_url` is configured and correct
 - Ensure Ollama service is running and accessible
-- Check that Ollama has the required model loaded
 
 ### On macOS
 
@@ -372,15 +325,6 @@ If the executable shows as untrusted:
 ```bash
 xattr -d com.apple.quarantine ./hasheous-taskrunner
 ```
-
-## Dependencies
-
-- **Newtonsoft.Json** (v13.0.4) - JSON serialization/deserialization
-- .NET 8.0 runtime (included in self-contained builds)
-
-## License
-
-See LICENSE file in the repository root.
 
 ## Contributing
 
