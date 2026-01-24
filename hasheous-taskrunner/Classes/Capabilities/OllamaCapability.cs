@@ -117,6 +117,79 @@ namespace hasheous_taskrunner.Classes.Capabilities
         }
 
         /// <inheritdoc/>
+        public async Task PullModelIfExists(HttpClient http, string model)
+        {
+            // check if model name is suffixed with a tag (e.g., model:tag). If not, add ":latest"
+            if (!model.Contains(":"))
+            {
+                model += ":latest";
+            }
+
+            var listResp = await http.GetAsync("/api/tags");
+            bool modelExists = false;
+            if (listResp.IsSuccessStatusCode)
+            {
+                var listJson = await listResp.Content.ReadAsStringAsync();
+                var listResult = JsonSerializer.Deserialize<PullModelResult>(listJson);
+                if (listResult != null && listResult.models != null)
+                {
+                    foreach (var m in listResult.models)
+                    {
+                        if (m.name == model)
+                        {
+                            // check if size > 0 (indicates downloaded) and modified_at is recent
+                            if (m.size > 0 && (DateTime.UtcNow - m.modified_at).TotalDays < 30)
+                            {
+                                modelExists = true;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!modelExists)
+            {
+                // model not found locally or outdated - pull it
+                Console.WriteLine($"OllamaCapability: Pulling model '{model}'...");
+                var pullBody = new { name = model, stream = false };
+                var pullJson = JsonSerializer.Serialize(pullBody);
+                var pullResp = await http.PostAsync("/api/pull", new StringContent(pullJson, Encoding.UTF8, "application/json"));
+
+                if (!pullResp.IsSuccessStatusCode)
+                {
+                    var pullErr = await pullResp.Content.ReadAsStringAsync();
+                    throw new Exception($"Model pull failed: {(int)pullResp.StatusCode} {pullErr}");
+                }
+            }
+        }
+
+        private class PullModelResult
+        {
+            public List<ModelInfo> models { get; set; } = new List<ModelInfo>();
+
+            public class ModelInfo
+            {
+                public string name { get; set; } = string.Empty;
+                public string model { get; set; } = string.Empty;
+                public DateTime modified_at { get; set; }
+                public long size { get; set; }
+                public string digest { get; set; } = string.Empty;
+                public DetailInfo details { get; set; } = new DetailInfo();
+
+                public class DetailInfo
+                {
+                    public string parent_model { get; set; } = string.Empty;
+                    public string format { get; set; } = string.Empty;
+                    public string family { get; set; } = string.Empty;
+                    public List<string> families { get; set; } = new List<string>();
+                    public string parameter_size { get; set; } = string.Empty;
+                    public string quantization_level { get; set; } = string.Empty;
+                }
+            }
+        }
+
+        /// <inheritdoc/>
         public async Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters)
         {
             var result = new Dictionary<string, object>();
@@ -179,19 +252,14 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 }
 
                 // 2) Pull model (stream: false for simpler handling)
-                Console.WriteLine($"OllamaCapability: Pulling model '{model}'...");
-                var pullBody = new
+                try
                 {
-                    name = model,
-                    stream = false
-                };
-                var pullJson = JsonSerializer.Serialize(pullBody);
-                var pullResp = await http.PostAsync("/api/pull", new StringContent(pullJson, Encoding.UTF8, "application/json"));
-                if (!pullResp.IsSuccessStatusCode)
+                    await PullModelIfExists(http, model);
+                }
+                catch (Exception ex)
                 {
-                    var pullErr = await pullResp.Content.ReadAsStringAsync();
                     result["result"] = false;
-                    result["error"] = $"Model pull failed: {(int)pullResp.StatusCode} {pullErr}";
+                    result["error"] = ex.Message;
                     return result;
                 }
 
@@ -253,14 +321,15 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     string embedModel = "nomic-embed-text";
 
                     // Ensure embedding model is available
-                    Console.WriteLine($"OllamaCapability: Pulling embedding model '{embedModel}'...");
-                    var pullEmbedBody = new { name = embedModel, stream = false };
-                    var pullEmbedJson = JsonSerializer.Serialize(pullEmbedBody);
-                    var pullEmbedResp = await http.PostAsync("/api/pull", new StringContent(pullEmbedJson, Encoding.UTF8, "application/json"));
-                    if (!pullEmbedResp.IsSuccessStatusCode)
+                    try
                     {
-                        // If pull fails, continue and hope model already exists
-                        Console.WriteLine($"OllamaCapability: Embed model pull failed: {(int)pullEmbedResp.StatusCode}");
+                        await PullModelIfExists(http, embedModel);
+                    }
+                    catch (Exception ex)
+                    {
+                        result["result"] = false;
+                        result["error"] = ex.Message;
+                        return result;
                     }
 
                     // Compute embeddings
@@ -786,4 +855,3 @@ namespace hasheous_taskrunner.Classes.Capabilities
         }
     }
 }
-
