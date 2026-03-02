@@ -99,6 +99,36 @@ namespace hasheous_taskrunner.Classes
         private static Dictionary<string, string> currentConfig = new Dictionary<string, string>();
 
         /// <summary>
+        /// Gets the client name from command-line arguments, environment variables, or default.
+        /// This is evaluated early to determine the working directory path.
+        /// </summary>
+        private static string ClientName
+        {
+            get
+            {
+                // Check command-line arguments first
+                var args = Environment.GetCommandLineArgs();
+                for (int i = 0; i < args.Length; i++)
+                {
+                    if (args[i] == "--ClientName" && i + 1 < args.Length)
+                    {
+                        return args[i + 1];
+                    }
+                }
+
+                // Check environment variable
+                string? envValue = Environment.GetEnvironmentVariable("ClientName");
+                if (!string.IsNullOrEmpty(envValue))
+                {
+                    return envValue;
+                }
+
+                // Return default
+                return defaultConfig.ContainsKey("ClientName") ? defaultConfig["ClientName"] : Dns.GetHostName();
+            }
+        }
+
+        /// <summary>
         /// Gets the current configuration.
         /// </summary>
         public static Dictionary<string, string> Configuration
@@ -245,7 +275,8 @@ namespace hasheous_taskrunner.Classes
         {
             get
             {
-                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".hasheous-taskrunner");
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".hasheous-taskrunner", ClientName);
+
                 if (!Directory.Exists(path))
                 {
                     Directory.CreateDirectory(path);
