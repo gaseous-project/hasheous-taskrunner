@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using hasheous_taskrunner.Classes;
 using hasheous_taskrunner.Classes.Communication;
@@ -11,7 +12,7 @@ static string GetBaseClientName()
     var args = Environment.GetCommandLineArgs();
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i] == "--ClientName" && i + 1 < args.Length)
+        if (string.Equals(args[i], "--ClientName", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
         {
             return args[i + 1];
         }
@@ -33,7 +34,7 @@ static int? DetectClientsCount()
     // Check command-line arguments first
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i] == "--clients" && i + 1 < args.Length)
+        if (string.Equals(args[i], "--clients", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
         {
             if (int.TryParse(args[i + 1], out int count) && count > 1)
             {
@@ -98,6 +99,33 @@ static async Task RunMultiClientSupervisor(int clientCount)
                 CreateNoWindow = false
             };
 
+            // If launched via `dotnet <app>.dll`, include the dll path for child processes.
+            var originalArgs = Environment.GetCommandLineArgs();
+            string? processPath = Environment.ProcessPath;
+            string? processFileName = string.IsNullOrEmpty(processPath) ? null : Path.GetFileName(processPath);
+            bool isDotnetHost = string.Equals(processFileName, "dotnet", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(processFileName, "dotnet.exe", StringComparison.OrdinalIgnoreCase);
+            string? dotnetAppDll = null;
+            if (isDotnetHost)
+            {
+                string? entryAssemblyPath = Assembly.GetEntryAssembly()?.Location;
+                if (!string.IsNullOrEmpty(entryAssemblyPath) &&
+                    entryAssemblyPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    dotnetAppDll = entryAssemblyPath;
+                }
+                else
+                {
+                    dotnetAppDll = originalArgs.FirstOrDefault(arg =>
+                        arg.EndsWith(".dll", StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (!string.IsNullOrEmpty(dotnetAppDll))
+                {
+                    psi.ArgumentList.Add(dotnetAppDll);
+                }
+            }
+
             // Pass --ClientName with numbered suffix
             psi.ArgumentList.Add("--ClientName");
             psi.ArgumentList.Add(childClientName);
@@ -106,14 +134,20 @@ static async Task RunMultiClientSupervisor(int clientCount)
             var args = Environment.GetCommandLineArgs();
             for (int j = 1; j < args.Length; j++)
             {
-                if (args[j] == "--clients")
+                if (string.Equals(args[j], "--clients", StringComparison.OrdinalIgnoreCase))
                 {
                     j++; // Skip the count value
                     continue;
                 }
-                if (args[j] == "--ClientName")
+                if (string.Equals(args[j], "--ClientName", StringComparison.OrdinalIgnoreCase))
                 {
                     j++; // Skip the next value (original ClientName)
+                    continue;
+                }
+                if (!string.IsNullOrEmpty(dotnetAppDll) &&
+                    string.Equals(args[j], dotnetAppDll, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Already added the .dll path for dotnet-hosted execution.
                     continue;
                 }
                 psi.ArgumentList.Add(args[j]);
@@ -121,6 +155,13 @@ static async Task RunMultiClientSupervisor(int clientCount)
 
             // Set environment variable to mark this as a child process
             psi.Environment["HASHEOUS_IS_CHILD_CLIENT"] = "true";
+
+            string? debugChildLaunch = Environment.GetEnvironmentVariable("HASHEOUS_DEBUG_CHILD_LAUNCH");
+            if (string.Equals(debugChildLaunch, "true", StringComparison.OrdinalIgnoreCase) || debugChildLaunch == "1")
+            {
+                string launchArgs = string.Join(" ", psi.ArgumentList.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+                Console.WriteLine($"[DEBUG] Child launch: {psi.FileName} {launchArgs}");
+            }
 
             try
             {

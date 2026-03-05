@@ -72,7 +72,7 @@ namespace hasheous_taskrunner.Classes
         /// <summary>
         /// The default configuration values.
         /// </summary>
-        private static Dictionary<string, string> defaultConfig = new Dictionary<string, string>
+        private static Dictionary<string, string> defaultConfig = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             { "HostAddress", "https://hasheous.org/" },
             { "APIKey", "" },
@@ -112,7 +112,7 @@ namespace hasheous_taskrunner.Classes
                 var args = Environment.GetCommandLineArgs();
                 for (int i = 0; i < args.Length; i++)
                 {
-                    if (args[i] == "--ClientName" && i + 1 < args.Length)
+                    if (string.Equals(args[i], "--ClientName", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
                     {
                         return args[i + 1];
                     }
@@ -140,7 +140,7 @@ namespace hasheous_taskrunner.Classes
                 if (currentConfig.Count == 0)
                 {
                     // load default config
-                    currentConfig = new Dictionary<string, string>(defaultConfig);
+                    currentConfig = new Dictionary<string, string>(defaultConfig, StringComparer.OrdinalIgnoreCase);
 
                     // load config file
                     if (File.Exists(ConfigFilePath))
@@ -182,7 +182,8 @@ namespace hasheous_taskrunner.Classes
 
                     // load command line arguments
                     var args = Environment.GetCommandLineArgs();
-                    if (args.Contains("--help") || args.Contains("-h"))
+                    if (args.Any(arg => string.Equals(arg, "--help", StringComparison.OrdinalIgnoreCase)) ||
+                        args.Any(arg => string.Equals(arg, "-h", StringComparison.OrdinalIgnoreCase)))
                     {
                         Console.WriteLine("Usage: hasheous-taskrunner [--option value] ...");
                         Console.WriteLine("Available options:");
@@ -217,7 +218,7 @@ namespace hasheous_taskrunner.Classes
 
                     for (int i = 0; i < args.Length; i++)
                     {
-                        if (args[i].StartsWith("--"))
+                        if (args[i].StartsWith("--", StringComparison.OrdinalIgnoreCase))
                         {
                             string argKey = args[i].Substring(2);
                             if (defaultConfig.ContainsKey(argKey) && i + 1 < args.Length)

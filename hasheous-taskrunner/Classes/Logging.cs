@@ -47,7 +47,7 @@ namespace hasheous_taskrunner.Classes
             var args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length; i++)
             {
-                if (args[i] == "--ClientName" && i + 1 < args.Length)
+                if (string.Equals(args[i], "--ClientName", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
                 {
                     return args[i + 1];
                 }
