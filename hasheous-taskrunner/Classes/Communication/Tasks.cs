@@ -1,4 +1,3 @@
-using hasheous_taskrunner.Classes;
 using hasheous_taskrunner.Classes.Tasks;
 
 namespace hasheous_taskrunner.Classes.Communication
@@ -33,7 +32,7 @@ namespace hasheous_taskrunner.Classes.Communication
                     var job = await Common.Get<TaskItem>(fetchTasksUrl);
                     if (job != null)
                     {
-                        Logging.Log($"Fetched task ID {job.Id} of type {job.TaskName}.");
+                        Console.WriteLine($"Fetched task ID {job.Id} of type {job.TaskName}.");
 
                         // find the appropriate task handler based on job.TaskName = ITask.TaskType
                         var taskType = typeof(ITask);
@@ -58,9 +57,9 @@ namespace hasheous_taskrunner.Classes.Communication
                         }
 
                         // verify the task
-                        Console.WriteLine($"Verifying task ID {job.Id}...");
+                        Console.Write($"Verifying task ID {job.Id}...");
                         TaskVerificationResult verificationResult = await handler.VerifyAsync(job.Parameters, cancellationToken);
-                        Console.WriteLine($"{verificationResult.Status}");
+                        Console.WriteLine($" {verificationResult.Status}");
 
                         // acknowledge receipt of the task
                         string acknowledgeUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job";
@@ -80,9 +79,9 @@ namespace hasheous_taskrunner.Classes.Communication
                             ackPayload["result"] = "";
                             ackPayload["error_message"] = verificationResult.Details;
                         }
-                        Console.WriteLine($"Acknowledging task ID {job.Id} with status {ackPayload["status"]}...");
+                        Console.Write($"Acknowledging task ID {job.Id} with status {ackPayload["status"]}...");
                         await Common.Post<object>(acknowledgeUrl, ackPayload);
-                        Console.WriteLine("Done.");
+                        Console.WriteLine(" done.");
 
                         // if verification failed, do not execute
                         if (verificationResult.Status != TaskVerificationResult.VerificationStatus.Success)
@@ -110,7 +109,7 @@ namespace hasheous_taskrunner.Classes.Communication
                             ackPayload["status"] = QueueItemStatus.Failed.ToString();
                             ackPayload["result"] = "";
                             ackPayload["error_message"] = execEx.Message;
-                            Console.WriteLine($"Failed: {execEx.Message}");
+                            Console.WriteLine($" failed: {execEx.Message}");
                         }
                         Console.WriteLine($"Reporting completion of task ID {job.Id} with status {ackPayload["status"]}...");
                         await Common.Post<object>(acknowledgeUrl, ackPayload);
@@ -118,11 +117,11 @@ namespace hasheous_taskrunner.Classes.Communication
                 }
                 catch (Exception ex)
                 {
-                    Logging.Log($"Failed to fetch tasks: {ex.Message}");
+                    Console.WriteLine($"Failed to fetch tasks: {ex.Message}");
                 }
                 lastTaskFetch = DateTime.UtcNow;
                 IsRunningTask = false;
-                Logging.Log("Task processing cycle complete. Waiting for next interval.");
+                Console.WriteLine("Task processing cycle complete. Waiting for next interval.");
             }
         }
     }

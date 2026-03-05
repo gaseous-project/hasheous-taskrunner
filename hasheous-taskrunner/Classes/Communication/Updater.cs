@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Console = hasheous_taskrunner.Classes.Logging;
 
 namespace hasheous_taskrunner.Classes.Communication
 {

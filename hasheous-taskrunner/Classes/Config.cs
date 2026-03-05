@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.ServiceProcess;
-using Console = hasheous_taskrunner.Classes.Logging;
 
 namespace hasheous_taskrunner.Classes
 {
@@ -72,12 +71,11 @@ namespace hasheous_taskrunner.Classes
         /// <summary>
         /// The default configuration values.
         /// </summary>
-        private static Dictionary<string, string> defaultConfig = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private static Dictionary<string, string> defaultConfig = new Dictionary<string, string>
         {
             { "HostAddress", "https://hasheous.org/" },
             { "APIKey", "" },
             { "ClientName", Dns.GetHostName() },
-            { "Clients", "" },
             { "ollama_url", "" },
             { "EnableAutoUpdate", "true" }
         };
@@ -112,7 +110,7 @@ namespace hasheous_taskrunner.Classes
                 var args = Environment.GetCommandLineArgs();
                 for (int i = 0; i < args.Length; i++)
                 {
-                    if (string.Equals(args[i], "--ClientName", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                    if (args[i] == "--ClientName" && i + 1 < args.Length)
                     {
                         return args[i + 1];
                     }
@@ -140,7 +138,7 @@ namespace hasheous_taskrunner.Classes
                 if (currentConfig.Count == 0)
                 {
                     // load default config
-                    currentConfig = new Dictionary<string, string>(defaultConfig, StringComparer.OrdinalIgnoreCase);
+                    currentConfig = new Dictionary<string, string>(defaultConfig);
 
                     // load config file
                     if (File.Exists(ConfigFilePath))
@@ -182,8 +180,7 @@ namespace hasheous_taskrunner.Classes
 
                     // load command line arguments
                     var args = Environment.GetCommandLineArgs();
-                    if (args.Any(arg => string.Equals(arg, "--help", StringComparison.OrdinalIgnoreCase)) ||
-                        args.Any(arg => string.Equals(arg, "-h", StringComparison.OrdinalIgnoreCase)))
+                    if (args.Contains("--help") || args.Contains("-h"))
                     {
                         Console.WriteLine("Usage: hasheous-taskrunner [--option value] ...");
                         Console.WriteLine("Available options:");
@@ -218,7 +215,7 @@ namespace hasheous_taskrunner.Classes
 
                     for (int i = 0; i < args.Length; i++)
                     {
-                        if (args[i].StartsWith("--", StringComparison.OrdinalIgnoreCase))
+                        if (args[i].StartsWith("--"))
                         {
                             string argKey = args[i].Substring(2);
                             if (defaultConfig.ContainsKey(argKey) && i + 1 < args.Length)

@@ -1,5 +1,4 @@
 using hasheous_taskrunner.Classes.Capabilities;
-using Console = hasheous_taskrunner.Classes.Logging;
 
 namespace hasheous_taskrunner.Classes.Tasks
 {

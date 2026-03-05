@@ -1,6 +1,5 @@
 using System.Net;
 using hasheous_taskrunner.Classes;
-using Console = hasheous_taskrunner.Classes.Logging;
 
 namespace hasheous_taskrunner.Classes.Communication
 {
