@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Console = hasheous_taskrunner.Classes.Logging;
 
 namespace hasheous_taskrunner.Classes.Capabilities
 {

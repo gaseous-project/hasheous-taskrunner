@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.ServiceProcess;
+using Console = hasheous_taskrunner.Classes.Logging;
 
 namespace hasheous_taskrunner.Classes
 {
@@ -76,6 +77,7 @@ namespace hasheous_taskrunner.Classes
             { "HostAddress", "https://hasheous.org/" },
             { "APIKey", "" },
             { "ClientName", Dns.GetHostName() },
+            { "Clients", "" },
             { "ollama_url", "" },
             { "EnableAutoUpdate", "true" }
         };
