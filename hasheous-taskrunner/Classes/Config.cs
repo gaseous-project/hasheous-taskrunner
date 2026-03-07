@@ -44,7 +44,7 @@ namespace hasheous_taskrunner.Classes
             get
             {
                 // existing default version to return if assembly lookup fails
-                Version defaultVersion = new Version(0, 1, 0, 0);
+                Version defaultVersion = new Version(1, 1, 0, 0);
 
                 try
                 {
@@ -55,6 +55,11 @@ namespace hasheous_taskrunner.Classes
                         Version? asmVersion = asm.GetName().Version;
                         if (asmVersion != null)
                         {
+                            if (asmVersion < defaultVersion)
+                            {
+                                return defaultVersion;
+                            }
+
                             return asmVersion;
                         }
                     }

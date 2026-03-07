@@ -23,13 +23,15 @@ namespace hasheous_taskrunner.Classes.Capabilities
         /// <summary>
         /// Tests the capability to ensure it is available.
         /// </summary>
-        public Task<bool> TestAsync();
+        /// <param name="statusUpdate">A StatusUpdate instance for logging test status.</param>
+        public Task<bool> TestAsync(Helpers.StatusUpdate? statusUpdate = null);
 
         /// <summary>
         /// Executes the capability with the provided parameters.
         /// </summary>
         /// <param name="parameters">A dictionary of parameters required for execution.</param>
+        /// <param name="statusUpdate">A StatusUpdate instance for logging execution status.</param>
         /// <returns>A task representing the asynchronous operation, with a result indicating success or failure.</returns>
-        public Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters);
+        public Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters, Helpers.StatusUpdate statusUpdate);
     }
 }

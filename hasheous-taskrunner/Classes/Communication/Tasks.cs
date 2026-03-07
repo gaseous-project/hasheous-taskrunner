@@ -3,12 +3,19 @@ using hasheous_taskrunner.Classes.Tasks;
 namespace hasheous_taskrunner.Classes.Communication
 {
     /// <summary>
-    /// Container for task-related communication helpers used by the task runner.
+    /// Container for task-related communication helpers used by the task runner. This class is responsible for fetching tasks from the configured host, launching the background task to verify, execute, and report back the results of the task.
     /// </summary>
     public static class Tasks
     {
         private static DateTime lastTaskFetch = DateTime.MinValue;
         private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(30);
+
+        private static Dictionary<long, Task> activeTaskRunners = new Dictionary<long, Task>();
+
+        /// <summary>
+        /// Gets or sets the maximum number of concurrent task runners allowed.
+        /// </summary>
+        public static int MaxConcurrentTasks { get; set; } = 2;
 
         /// <summary>
         /// Indicates whether a task is currently being executed.
@@ -26,93 +33,59 @@ namespace hasheous_taskrunner.Classes.Communication
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 IsRunningTask = true;
-                string fetchTasksUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job";
+
+                // First, clean up completed tasks to free up slots
+                var completedJobIds = activeTaskRunners
+                    .Where(kvp => kvp.Value.IsCompleted)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var jobId in completedJobIds)
+                {
+                    activeTaskRunners.Remove(jobId);
+                    Console.WriteLine($"Task {jobId} completed and removed from active runners.");
+                }
+
+                // report current status before fetching new tasks
+                Console.WriteLine($"Checking for new tasks... Active tasks: {activeTaskRunners.Count}/{MaxConcurrentTasks}");
+
+                // Fetch tasks from the server
+                string fetchTasksUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job?numberOfTasks={MaxConcurrentTasks}";
                 try
                 {
-                    var job = await Common.Get<TaskItem>(fetchTasksUrl);
-                    if (job != null)
+                    var jobs = await Common.Get<List<TaskItem>?>(fetchTasksUrl);
+                    if (jobs != null)
                     {
-                        Console.WriteLine($"Fetched task ID {job.Id} of type {job.TaskName}.");
+                        Console.WriteLine($"Fetched {jobs.Count} job(s) from server. Currently running: {activeTaskRunners.Count}");
 
-                        // find the appropriate task handler based on job.TaskName = ITask.TaskType
-                        var taskType = typeof(ITask);
-                        var taskHandlers = AppDomain.CurrentDomain.GetAssemblies()
-                            .SelectMany(s => s.GetTypes())
-                            .Where(p => taskType.IsAssignableFrom(p) && !p.IsInterface && !p.IsAbstract);
-
-                        ITask? handler = null;
-                        foreach (var handlerType in taskHandlers)
+                        foreach (var job in jobs)
                         {
-                            var instance = Activator.CreateInstance(handlerType) as ITask;
-                            if (instance?.TaskType == job.TaskName)
+                            // Check if this job is already running
+                            if (activeTaskRunners.ContainsKey(job.Id))
                             {
-                                handler = instance;
-                                break;
+                                continue;
                             }
-                        }
 
-                        if (handler == null)
-                        {
-                            throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
-                        }
+                            // Wait for capacity if we're at the limit
+                            while (activeTaskRunners.Count >= MaxConcurrentTasks)
+                            {
+                                Console.WriteLine($"Maximum concurrent tasks ({MaxConcurrentTasks}) reached. Waiting for a task to complete...");
 
-                        // verify the task
-                        Console.Write($"Verifying task ID {job.Id}...");
-                        TaskVerificationResult verificationResult = await handler.VerifyAsync(job.Parameters, cancellationToken);
-                        Console.WriteLine($" {verificationResult.Status}");
+                                // Wait for any of the active task runners to complete
+                                var completedRunner = await Task.WhenAny(activeTaskRunners.Values);
 
-                        // acknowledge receipt of the task
-                        string acknowledgeUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job";
-                        Dictionary<string, object> ackPayload = new Dictionary<string, object>
-                        {
-                            { "task_id", job.Id }
-                        };
-                        if (verificationResult.Status == TaskVerificationResult.VerificationStatus.Success)
-                        {
-                            ackPayload["status"] = QueueItemStatus.InProgress.ToString();
-                            ackPayload["result"] = "";
-                            ackPayload["error_message"] = "";
-                        }
-                        else
-                        {
-                            ackPayload["status"] = QueueItemStatus.Failed.ToString();
-                            ackPayload["result"] = "";
-                            ackPayload["error_message"] = verificationResult.Details;
-                        }
-                        Console.Write($"Acknowledging task ID {job.Id} with status {ackPayload["status"]}...");
-                        await Common.Post<object>(acknowledgeUrl, ackPayload);
-                        Console.WriteLine(" done.");
+                                // Find and remove the completed task
+                                var completedEntry = activeTaskRunners.First(kvp => kvp.Value == completedRunner);
+                                activeTaskRunners.Remove(completedEntry.Key);
+                                Console.WriteLine($"Task {completedEntry.Key} completed and removed from active runners.");
+                            }
 
-                        // if verification failed, do not execute
-                        if (verificationResult.Status != TaskVerificationResult.VerificationStatus.Success)
-                        {
-                            lastTaskFetch = DateTime.UtcNow;
-                            IsRunningTask = false;
-                            Console.WriteLine($"Skipping execution of task ID {job.Id} due to verification failure.");
-                            return;
+                            // Start a new task executor for the fetched job
+                            Console.WriteLine($"Starting new task executor for job {job.Id}");
+                            var runner = new TaskExecutor(job);
+                            var runnerTask = Task.Run(() => runner.RunTask(cancellationToken), cancellationToken);
+                            activeTaskRunners.Add(job.Id, runnerTask);
                         }
-
-                        // execute the task
-                        try
-                        {
-                            Console.WriteLine($"Executing task ID {job.Id}...");
-                            Dictionary<string, object> executionResult = await handler.ExecuteAsync(job.Parameters, cancellationToken);
-                            // report task completion
-                            ackPayload["status"] = QueueItemStatus.Submitted.ToString();
-                            ackPayload["result"] = executionResult.ContainsKey("response") ? executionResult["response"] : "";
-                            ackPayload["error_message"] = executionResult.ContainsKey("error") ? executionResult["error"] : "";
-                            Console.WriteLine($"Task ID {job.Id} complete.");
-                        }
-                        catch (Exception execEx)
-                        {
-                            // report task failure
-                            ackPayload["status"] = QueueItemStatus.Failed.ToString();
-                            ackPayload["result"] = "";
-                            ackPayload["error_message"] = execEx.Message;
-                            Console.WriteLine($" failed: {execEx.Message}");
-                        }
-                        Console.WriteLine($"Reporting completion of task ID {job.Id} with status {ackPayload["status"]}...");
-                        await Common.Post<object>(acknowledgeUrl, ackPayload);
                     }
                 }
                 catch (Exception ex)
@@ -121,7 +94,7 @@ namespace hasheous_taskrunner.Classes.Communication
                 }
                 lastTaskFetch = DateTime.UtcNow;
                 IsRunningTask = false;
-                Console.WriteLine("Task processing cycle complete. Waiting for next interval.");
+                Console.WriteLine($"Task processing cycle complete. Active tasks: {activeTaskRunners.Count}. Waiting for next interval.");
             }
         }
     }

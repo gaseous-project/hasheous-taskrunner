@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using hasheous_taskrunner.Classes.Helpers;
 
 namespace hasheous_taskrunner.Classes.Capabilities
 {
@@ -87,7 +88,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
         private Dictionary<string, object>? _configuration;
 
         /// <inheritdoc/>
-        public async Task<bool> TestAsync()
+        public async Task<bool> TestAsync(Helpers.StatusUpdate? statusUpdate = null)
         {
             string baseUrl = Configuration?["ollama_url"] as string ?? string.Empty;
             if (string.IsNullOrWhiteSpace(baseUrl))
@@ -117,7 +118,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
         }
 
         /// <inheritdoc/>
-        public async Task PullModelIfExists(HttpClient http, string model)
+        public async Task PullModelIfExists(HttpClient http, string model, StatusUpdate? statusUpdate = null)
         {
             // check if model name is suffixed with a tag (e.g., model:tag). If not, add ":latest"
             if (!model.Contains(":"))
@@ -151,7 +152,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
             if (!modelExists)
             {
                 // model not found locally or outdated - pull it
-                Console.WriteLine($"OllamaCapability: Pulling model '{model}'...");
+                if (statusUpdate != null) statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Pulling model '{model}'...");
                 var pullBody = new { name = model, stream = false };
                 var pullJson = JsonSerializer.Serialize(pullBody);
                 var pullResp = await http.PostAsync("/api/pull", new StringContent(pullJson, Encoding.UTF8, "application/json"));
@@ -190,7 +191,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
         }
 
         /// <inheritdoc/>
-        public async Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters)
+        public async Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters, Helpers.StatusUpdate statusUpdate)
         {
             var result = new Dictionary<string, object>();
 
@@ -254,7 +255,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 // 2) Pull model (stream: false for simpler handling)
                 try
                 {
-                    await PullModelIfExists(http, model);
+                    await PullModelIfExists(http, model, statusUpdate);
                 }
                 catch (Exception ex)
                 {
@@ -323,7 +324,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     // Ensure embedding model is available
                     try
                     {
-                        await PullModelIfExists(http, embedModel);
+                        await PullModelIfExists(http, embedModel, statusUpdate);
                     }
                     catch (Exception ex)
                     {
@@ -333,7 +334,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     }
 
                     // Compute embeddings
-                    Console.WriteLine("OllamaCapability: Computing embeddings for RAG...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Computing embeddings for RAG...");
                     var docEmbeddings = new List<double[]>();
                     int docIndex = 1;
                     foreach (var text in embeddingTexts)
@@ -368,7 +369,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         ? BuildRagPromptForTags(prompt, topKResults)
                         : BuildRagPromptForSummary(prompt, topKResults);
 
-                    Console.WriteLine("OllamaCapability: Generating response with RAG prompt...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response with RAG prompt...");
                     var genBody = new
                     {
                         model = model,
@@ -408,7 +409,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 }
                 else
                 {
-                    Console.WriteLine("OllamaCapability: Generating response without RAG...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response without RAG...");
                     // Direct generation without chunking
                     var genBody = new
                     {
@@ -461,7 +462,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         elapsedUnits = "min";
                     }
                 }
-                Console.WriteLine($"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
 
                 result["result"] = true;
                 result["response"] = responseText ?? string.Empty;

@@ -1,3 +1,5 @@
+using hasheous_taskrunner.Classes.Helpers;
+
 namespace hasheous_taskrunner.Classes.Capabilities
 {
     /// <summary>
@@ -5,6 +7,11 @@ namespace hasheous_taskrunner.Classes.Capabilities
     /// </summary>
     public class Capabilities
     {
+        /// <summary>
+        /// Holds the status updates from the last capability check operation.
+        /// </summary>
+        public static StatusUpdate? LastCheckStatus { get; private set; }
+
         /// <summary>
         /// Maps capability IDs to their descriptive names.
         /// </summary>
@@ -27,6 +34,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
         /// <returns>A list of capability names that passed the checks.</returns>
         public async static Task<List<int>> CheckCapabilitiesAsync(Dictionary<string, object> capabilitiesToCheck)
         {
+            var statusUpdate = new StatusUpdate();
             List<int> results = new List<int>();
 
             // get all available capability types that implement ICapability
@@ -39,7 +47,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         .ToList();
 
             // check internal capabilities first
-            Console.WriteLine("Checking internal capabilities...");
+            statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "Checking internal capabilities...");
             foreach (var capabilityType in availableCapabilityTypes)
             {
                 // create instance only when needed
@@ -51,7 +59,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
 
                 if (capability.IsInternalCapability == true)
                 {
-                    Console.WriteLine($"Checking capability: {CapabilityNames[capability.CapabilityId]}");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"Checking capability: {CapabilityNames[capability.CapabilityId]}");
                     // test capability
                     // load default configuration if available
                     Dictionary<string, object> configDict = new Dictionary<string, object>();
@@ -66,17 +74,17 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     configDict["ollama_url"] = Config.Configuration.ContainsKey("ollama_url") ? Config.Configuration["ollama_url"] : "";
                     capability.Configuration = configDict;
 
-                    bool testResult = await capability.TestAsync();
+                    bool testResult = await capability.TestAsync(statusUpdate);
                     if (testResult)
                     {
-                        Console.WriteLine($"Capability {CapabilityNames[capability.CapabilityId]} passed.");
+                        statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"Capability {CapabilityNames[capability.CapabilityId]} passed.");
                         results.Add(capability.CapabilityId);
                     }
                 }
             }
 
             // check requested capabilities - can be internal or external
-            Console.WriteLine("Checking requested capabilities...");
+            statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "Checking requested capabilities...");
             foreach (var capabilityEntry in capabilitiesToCheck)
             {
                 int? capabilityId = null;
@@ -116,7 +124,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
 
                 if (capability != null)
                 {
-                    Console.WriteLine($"Checking capability: {CapabilityNames[capability.CapabilityId]}");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"Checking capability: {CapabilityNames[capability.CapabilityId]}");
 
                     // set configuration if provided
                     {
@@ -147,22 +155,24 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         catch
                         {
                             // deserialization error: skip this capability
-                            Console.WriteLine($"Failed to parse configuration for capability {CapabilityNames[capability.CapabilityId]}, skipping...");
+                            statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, $"Failed to parse configuration for capability {CapabilityNames[capability.CapabilityId]}, skipping...");
                             continue;
                         }
                         capability.Configuration = configDict;
                     }
 
                     // test capability
-                    bool testResult = await capability.TestAsync();
+                    bool testResult = await capability.TestAsync(statusUpdate);
                     if (testResult)
                     {
-                        Console.WriteLine($"Capability {CapabilityNames[capability.CapabilityId]} passed.");
+                        statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"Capability {CapabilityNames[capability.CapabilityId]} passed.");
                         results.Add(capability.CapabilityId);
                     }
                 }
             }
 
+            // Store the status for later access
+            LastCheckStatus = statusUpdate;
             return results;
         }
 

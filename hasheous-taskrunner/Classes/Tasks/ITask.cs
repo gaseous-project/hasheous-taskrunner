@@ -25,9 +25,10 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// Executes the task asynchronously.
         /// </summary>
         /// <param name="parameters">A dictionary of parameters required for task execution.</param>
+        /// <param name="statusUpdate">A StatusUpdate instance for logging execution status.</param>
         /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
         /// <returns>A dictionary containing the results of the task execution.</returns>
-        public Task<Dictionary<string, object>> ExecuteAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken);
+        public Task<Dictionary<string, object>> ExecuteAsync(Dictionary<string, string>? parameters, Helpers.StatusUpdate statusUpdate, CancellationToken cancellationToken);
     }
 
     /// <summary>

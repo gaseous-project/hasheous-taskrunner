@@ -50,14 +50,14 @@ namespace hasheous_taskrunner.Classes.Capabilities
         private Dictionary<string, object>? _configuration;
 
         /// <inheritdoc/>
-        public async Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters)
+        public async Task<Dictionary<string, object>?> ExecuteAsync(Dictionary<string, object> parameters, Helpers.StatusUpdate statusUpdate)
         {
             bool result = await TestAsync();
             return new Dictionary<string, object> { { "result", result } };
         }
 
         /// <inheritdoc/>
-        public async Task<bool> TestAsync()
+        public async Task<bool> TestAsync(Helpers.StatusUpdate? statusUpdate = null)
         {
             // check disk space on the host
             DriveInfo drive = new DriveInfo(Path.GetPathRoot(Environment.CurrentDirectory) ?? "/");

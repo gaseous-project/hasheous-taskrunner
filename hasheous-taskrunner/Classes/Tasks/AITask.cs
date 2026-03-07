@@ -1,4 +1,5 @@
 using hasheous_taskrunner.Classes.Capabilities;
+using hasheous_taskrunner.Classes.Helpers;
 
 namespace hasheous_taskrunner.Classes.Tasks
 {
@@ -40,7 +41,7 @@ namespace hasheous_taskrunner.Classes.Tasks
         }
 
         /// <inheritdoc/>
-        public async Task<Dictionary<string, object>> ExecuteAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
+        public async Task<Dictionary<string, object>> ExecuteAsync(Dictionary<string, string>? parameters, Helpers.StatusUpdate statusUpdate, CancellationToken cancellationToken)
         {
             // use the model and prompt parameters to call Ollama API
             var ai = Classes.Capabilities.Capabilities.GetCapabilityById<ICapability>(20); // AI capability
@@ -79,7 +80,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 { "model", modelDescriptionOverride },
                 { "prompt", parameters != null && parameters.ContainsKey("prompt_description") ? parameters["prompt_description"] : "" },
                 { "embeddings", sources }
-            });
+            }, statusUpdate);
 
             var tagsResult = await ai.ExecuteAsync(new Dictionary<string, object>
             {
@@ -87,7 +88,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 { "prompt", parameters != null && parameters.ContainsKey("prompt_tags") ? parameters["prompt_tags"] : "" },
                 { "embeddings", sources },
                 { "isTagGeneration", "true" }
-            });
+            }, statusUpdate);
 
             Dictionary<string, object> response = new Dictionary<string, object>();
             if (descriptionResult == null || tagsResult == null)
@@ -107,7 +108,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                     { "error", descriptionResult.ContainsKey("error") ? descriptionResult["error"] : "Unknown error from AI capability." }
                 };
 
-                Console.WriteLine("AITask: AI capability returned an error: " + (response.ContainsKey("error") ? response["error"] : "Unknown error."));
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AITask: AI capability returned an error: " + (response.ContainsKey("error") ? response["error"] : "Unknown error."));
                 return response;
             }
 
