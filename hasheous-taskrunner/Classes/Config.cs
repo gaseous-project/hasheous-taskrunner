@@ -83,7 +83,8 @@ namespace hasheous_taskrunner.Classes
             { "ClientName", ClientName },
             { "ollama_url", "" },
             { "EnableAutoUpdate", "true" },
-            { "notui", "false" }
+            { "notui", "false" },
+            { "TaskCount", "1" }
         };
 
         /// <summary>
