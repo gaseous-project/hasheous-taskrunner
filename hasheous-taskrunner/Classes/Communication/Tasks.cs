@@ -8,14 +8,39 @@ namespace hasheous_taskrunner.Classes.Communication
     public static class Tasks
     {
         private static DateTime lastTaskFetch = DateTime.MinValue;
-        private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(5);
 
         private static Dictionary<long, Task> activeTaskRunners = new Dictionary<long, Task>();
+        private static Dictionary<long, TaskExecutor> activeTaskExecutors = new Dictionary<long, TaskExecutor>();
 
         /// <summary>
-        /// Gets or sets the maximum number of concurrent task runners allowed.
+        /// Gets the collection of active task executors.
         /// </summary>
-        public static int MaxConcurrentTasks { get; set; } = 2;
+        public static IReadOnlyDictionary<long, TaskExecutor> ActiveTaskExecutors => activeTaskExecutors;
+
+        /// <summary>
+        /// Gets or sets the maximum number of concurrent task runners allowed. Default is set to 1, meaning only one task will be executed at a time. This property can be adjusted to allow for more concurrent tasks based on the capabilities of the host machine and the requirements of the tasks being executed.
+        /// </summary>
+        public static int MaxConcurrentTasks
+        {
+            get => _MaxConcurrentTasks;
+            set
+            {
+                if (value < 1)
+                {
+                    _MaxConcurrentTasks = 1;
+                }
+                else if (value > 20)
+                {
+                    _MaxConcurrentTasks = 20;
+                }
+                else
+                {
+                    _MaxConcurrentTasks = value;
+                }
+            }
+        }
+        private static int _MaxConcurrentTasks = 1;
 
         /// <summary>
         /// Indicates whether a task is currently being executed.
@@ -43,13 +68,22 @@ namespace hasheous_taskrunner.Classes.Communication
                 foreach (var jobId in completedJobIds)
                 {
                     activeTaskRunners.Remove(jobId);
+                    activeTaskExecutors.Remove(jobId);
                     Console.WriteLine($"Task {jobId} completed and removed from active runners.");
                 }
 
                 // report current status before fetching new tasks
                 Console.WriteLine($"Checking for new tasks... Active tasks: {activeTaskRunners.Count}/{MaxConcurrentTasks}");
 
-                // Fetch tasks from the server
+                // Fetch tasks from the server only if we have capacity to run them
+                if (activeTaskRunners.Count >= MaxConcurrentTasks)
+                {
+                    IsRunningTask = false;
+                    lastTaskFetch = DateTime.UtcNow;
+                    return;
+                }
+
+                // Fetch new tasks from the server
                 string fetchTasksUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job?numberOfTasks={MaxConcurrentTasks}";
                 try
                 {
@@ -77,6 +111,7 @@ namespace hasheous_taskrunner.Classes.Communication
                                 // Find and remove the completed task
                                 var completedEntry = activeTaskRunners.First(kvp => kvp.Value == completedRunner);
                                 activeTaskRunners.Remove(completedEntry.Key);
+                                activeTaskExecutors.Remove(completedEntry.Key);
                                 Console.WriteLine($"Task {completedEntry.Key} completed and removed from active runners.");
                             }
 
@@ -85,6 +120,7 @@ namespace hasheous_taskrunner.Classes.Communication
                             var runner = new TaskExecutor(job);
                             var runnerTask = Task.Run(() => runner.RunTask(cancellationToken), cancellationToken);
                             activeTaskRunners.Add(job.Id, runnerTask);
+                            activeTaskExecutors.Add(job.Id, runner);
                         }
                     }
                 }

@@ -32,6 +32,7 @@ namespace hasheous_taskrunner.Classes.Communication
         public async Task RunTask(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            job.Status = QueueItemStatus.Assigned;
             AddStatus(StatusItem.StatusType.Info, $"Fetched task ID {job.Id} of type {job.TaskName}.");
 
             // find the appropriate task handler based on job.TaskName = ITask.TaskType
@@ -53,11 +54,13 @@ namespace hasheous_taskrunner.Classes.Communication
 
             if (handler == null)
             {
+                job.Status = QueueItemStatus.Failed;
                 AddStatus(StatusItem.StatusType.Error, $"No task handler found for task type: {job.TaskName}");
                 throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
             }
 
             // verify the task
+            job.Status = QueueItemStatus.Verifying;
             AddStatus(StatusItem.StatusType.Info, $"Verifying task ID {job.Id}...");
             TaskVerificationResult verificationResult = await handler.VerifyAsync(job.Parameters, cancellationToken);
             AddStatus(StatusItem.StatusType.Info, $"Verification result for task ID {job.Id}: {verificationResult.Status}");
@@ -71,19 +74,38 @@ namespace hasheous_taskrunner.Classes.Communication
             };
             if (verificationResult.Status == TaskVerificationResult.VerificationStatus.Success)
             {
+                job.Status = QueueItemStatus.InProgress;
                 ackPayload["status"] = QueueItemStatus.InProgress.ToString();
                 ackPayload["result"] = "";
                 ackPayload["error_message"] = "";
             }
             else
             {
+                job.Status = QueueItemStatus.Failed;
                 ackPayload["status"] = QueueItemStatus.Failed.ToString();
                 ackPayload["result"] = "";
                 ackPayload["error_message"] = verificationResult.Details;
             }
             AddStatus(StatusItem.StatusType.Info, $"Acknowledging task ID {job.Id} with status {ackPayload["status"]}...");
-            await Common.Post<object>(acknowledgeUrl, ackPayload);
-            AddStatus(StatusItem.StatusType.Info, "Acknowledgment done.");
+
+            // Acknowledge with retry: wait 1 second and retry up to 3 times on failure
+            int ackRetries = 0;
+            const int maxAckRetries = 3;
+            while (true)
+            {
+                try
+                {
+                    await Common.Post<object>(acknowledgeUrl, ackPayload);
+                    AddStatus(StatusItem.StatusType.Info, "Acknowledgment done.");
+                    break;
+                }
+                catch (Exception ex) when (ackRetries < maxAckRetries)
+                {
+                    ackRetries++;
+                    AddStatus(StatusItem.StatusType.Warning, $"Acknowledgment failed: {ex.Message}. Retrying in 1 second... (Attempt {ackRetries}/{maxAckRetries})");
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+            }
             cancellationToken.ThrowIfCancellationRequested();
 
             // if verification failed, do not execute
@@ -97,6 +119,7 @@ namespace hasheous_taskrunner.Classes.Communication
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                job.Status = QueueItemStatus.InProgress;
                 AddStatus(StatusItem.StatusType.Info, $"Executing task ID {job.Id}...");
                 Dictionary<string, object> executionResult = await handler.ExecuteAsync(job.Parameters, this, cancellationToken);
                 // report task completion
@@ -118,8 +141,27 @@ namespace hasheous_taskrunner.Classes.Communication
                 ackPayload["error_message"] = execEx.Message;
                 AddStatus(StatusItem.StatusType.Error, $"Task ID {job.Id} failed: {execEx.Message}");
             }
+            job.Status = QueueItemStatus.Submitted;
             AddStatus(StatusItem.StatusType.Info, $"Reporting completion of task ID {job.Id} with status {ackPayload["status"]}...");
-            await Common.Post<object>(acknowledgeUrl, ackPayload);
+
+            // Report completion with retry: wait 1 second and retry up to 3 times on failure
+            int reportRetries = 0;
+            const int maxReportRetries = 3;
+            while (true)
+            {
+                try
+                {
+                    await Common.Post<object>(acknowledgeUrl, ackPayload);
+                    AddStatus(StatusItem.StatusType.Info, "Task completion reported successfully.");
+                    break;
+                }
+                catch (Exception ex) when (reportRetries < maxReportRetries)
+                {
+                    reportRetries++;
+                    AddStatus(StatusItem.StatusType.Warning, $"Reporting completion failed: {ex.Message}. Retrying in 1 second... (Attempt {reportRetries}/{maxReportRetries})");
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+            }
         }
     }
 }

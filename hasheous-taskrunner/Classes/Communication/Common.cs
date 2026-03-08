@@ -11,11 +11,11 @@ namespace hasheous_taskrunner.Classes.Communication
         {
             // Congigure HttpHelper
             TaskRunner.Classes.HttpHelper.BaseUri = Config.Configuration["HostAddress"];
-            TaskRunner.Classes.HttpHelper.Headers = new Dictionary<string, string>
+            TaskRunner.Classes.HttpHelper.SetHeaders(new Dictionary<string, string>
             {
-                { "X-Client-Host", Config.Configuration["ClientName"] },
+                { "X-Client-Host", Config.Configuration["ClientName"] ?? "unknown-host" },
                 { "X-Client-Version", Config.ClientVersion.ToString() }
-            };
+            });
         }
 
         private static Dictionary<string, string> registrationInfo = new Dictionary<string, string>();
@@ -92,18 +92,13 @@ namespace hasheous_taskrunner.Classes.Communication
         {
             if (IsRegistered())
             {
-                if (!TaskRunner.Classes.HttpHelper.Headers.ContainsKey("X-TaskWorker-API-Key"))
-                {
-                    TaskRunner.Classes.HttpHelper.Headers.Add("X-TaskWorker-API-Key", registrationInfo["client_api_key"]);
-                }
+                string? apiKey = registrationInfo.ContainsKey("client_api_key") ? registrationInfo["client_api_key"] : null;
+                TaskRunner.Classes.HttpHelper.SetHeader("X-TaskWorker-API-Key", apiKey);
             }
             else
             {
                 // not registered - remove header if it exists and throw an error
-                if (TaskRunner.Classes.HttpHelper.Headers.ContainsKey("X-TaskWorker-API-Key"))
-                {
-                    TaskRunner.Classes.HttpHelper.Headers.Remove("X-TaskWorker-API-Key");
-                }
+                TaskRunner.Classes.HttpHelper.RemoveHeader("X-TaskWorker-API-Key");
                 throw new InvalidOperationException("Task runner is not registered. Cannot add client secret header.");
             }
         }

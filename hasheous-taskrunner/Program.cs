@@ -2,6 +2,7 @@
 using System.Net;
 using hasheous_taskrunner.Classes;
 using hasheous_taskrunner.Classes.Communication;
+using hasheous_taskrunner.Classes.Helpers;
 
 // Set up global exception handler for unhandled exceptions
 AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
@@ -56,6 +57,26 @@ await hasheous_taskrunner.Classes.Communication.Registration.Initialize(Config.R
 
 if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
 {
+    // Check if TUI should be enabled
+    bool useTUI = !Config.Configuration.ContainsKey("notui") ||
+                  !bool.TryParse(Config.Configuration["notui"], out bool noTui) ||
+                  !noTui;
+
+    if (useTUI && !TUIManager.TryEnableVirtualTerminal())
+    {
+        useTUI = false;
+        Console.WriteLine("[INFO] TUI disabled: console does not support ANSI/VT sequences.");
+    }
+
+    if (useTUI)
+    {
+        // Install console capture for TUI mode
+        ConsoleCapture.Install();
+        // Suppress console output in TUI mode to prevent interference
+        ConsoleCapture.Instance?.SetSuppressOutput(true);
+        TUIManager.Initialize();
+    }
+
     Console.WriteLine("");
     Console.WriteLine("Task worker is now registered and ready to receive tasks.");
 
@@ -69,6 +90,32 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
         e.Cancel = true;  // Prevent immediate termination
         cts.Cancel();     // Signal the loop to break
     };
+
+    // TUI rendering task if enabled
+    Task? tuiTask = null;
+    if (useTUI)
+    {
+        Console.Clear();
+        tuiTask = Task.Run(async () =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    TUIManager.Render();
+                    await Task.Delay(1000, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch
+                {
+                    // Ignore rendering errors
+                }
+            }
+        }, cts.Token);
+    }
 
     // Main processing loop - each task run in the loop should be run as a background task
     while (!cts.Token.IsCancellationRequested)
@@ -140,6 +187,26 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
             Console.WriteLine($"[ERROR] Unexpected error in main loop: {ex.Message}");
             // Continue running despite the error
         }
+    }
+
+    // Cleanup: Wait for TUI task to finish
+    if (useTUI && tuiTask != null)
+    {
+        try
+        {
+            await tuiTask;
+        }
+        catch
+        {
+            // Ignore cancellation exceptions
+        }
+
+        // Restore console
+        ConsoleCapture.Instance?.SetSuppressOutput(false);
+        TUIManager.Shutdown();
+        Console.Clear();
+        Console.CursorVisible = true;
+        Console.WriteLine("Shutting down...");
     }
 
     // Cleanup: OS task kill commands

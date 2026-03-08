@@ -3,10 +3,16 @@
     "configurations": [
         {
             "name": "Task Runner",
-            "type": "dotnet",
+            "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "projectPath": "${workspaceFolder}/hasheous-taskrunner/hasheous-taskrunner.csproj"
+            "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net8.0/osx-arm64/hasheous-taskrunner.dll",
+            "args": [
+                "--notui",
+                "false"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
         }
     ]
 }

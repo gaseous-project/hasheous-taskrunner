@@ -129,7 +129,11 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <summary>
         /// The task has been cancelled.
         /// </summary>
-        Cancelled = 60
+        Cancelled = 60,
+        /// <summary>
+        /// The task is currently being verified.
+        /// </summary>
+        Verifying = 70
     }
 
     /// <summary>

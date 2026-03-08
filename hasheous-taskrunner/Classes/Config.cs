@@ -80,9 +80,10 @@ namespace hasheous_taskrunner.Classes
         {
             { "HostAddress", "https://hasheous.org/" },
             { "APIKey", "" },
-            { "ClientName", Dns.GetHostName() },
+            { "ClientName", ClientName },
             { "ollama_url", "" },
-            { "EnableAutoUpdate", "true" }
+            { "EnableAutoUpdate", "true" },
+            { "notui", "false" }
         };
 
         /// <summary>
@@ -129,7 +130,7 @@ namespace hasheous_taskrunner.Classes
                 }
 
                 // Return default
-                return defaultConfig.ContainsKey("ClientName") ? defaultConfig["ClientName"] : Dns.GetHostName();
+                return Dns.GetHostName() ?? "unknown-host";
             }
         }
 
@@ -140,7 +141,7 @@ namespace hasheous_taskrunner.Classes
         {
             get
             {
-                if (currentConfig.Count == 0)
+                if (currentConfig == null || currentConfig.Count == 0)
                 {
                     // load default config
                     currentConfig = new Dictionary<string, string>(defaultConfig);
@@ -246,6 +247,15 @@ namespace hasheous_taskrunner.Classes
                     }
                 }
 
+                // configure remaining settings that depend on config values
+                if (currentConfig.ContainsKey("TaskCount"))
+                {
+                    if (int.TryParse(currentConfig["TaskCount"], out int taskCount))
+                    {
+                        hasheous_taskrunner.Classes.Communication.Tasks.MaxConcurrentTasks = taskCount;
+                    }
+                }
+
                 return currentConfig;
             }
         }
@@ -280,7 +290,7 @@ namespace hasheous_taskrunner.Classes
         {
             get
             {
-                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".hasheous-taskrunner", ClientName);
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".hasheous-taskrunner");
 
                 if (!Directory.Exists(path))
                 {

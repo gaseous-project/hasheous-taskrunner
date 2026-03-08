@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace hasheous_taskrunner.Classes.Helpers
 {
     /// <summary>
@@ -5,10 +7,24 @@ namespace hasheous_taskrunner.Classes.Helpers
     /// </summary>
     public class StatusUpdate
     {
+        private readonly object _statusLock = new object();
+        private readonly List<StatusItem> _currentStatus = new List<StatusItem>
+        {
+            new StatusItem(StatusItem.StatusType.Info, "Initialized")
+        };
         /// <summary>
         /// Contains the status updates for the task execution process. This list is updated at each significant step of the task lifecycle, providing a trace of the task's progress and any issues encountered during verification or execution.
         /// </summary>
-        public List<StatusItem> CurrentStatus { get; private set; } = new List<StatusItem> { new StatusItem(StatusItem.StatusType.Info, "Initialized") };
+        public IReadOnlyList<StatusItem> CurrentStatus
+        {
+            get
+            {
+                lock (_statusLock)
+                {
+                    return _currentStatus.ToList();
+                }
+            }
+        }
 
         /// <summary>
         /// Adds a new status update to the current status list. This method is used to log informational messages, warnings, and errors throughout the task execution process, allowing for better tracking and debugging of tasks.
@@ -18,7 +34,10 @@ namespace hasheous_taskrunner.Classes.Helpers
         public void AddStatus(StatusItem.StatusType type, string message)
         {
             var statusUpdate = new StatusItem(type, message);
-            CurrentStatus.Add(statusUpdate);
+            lock (_statusLock)
+            {
+                _currentStatus.Add(statusUpdate);
+            }
         }
 
         /// <summary>

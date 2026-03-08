@@ -14,6 +14,7 @@ namespace TaskRunner.Classes
     public static class HttpHelper
     {
         private static bool httpClientInitialized = false;
+        private static readonly object headerLock = new object();
 
         /// <summary>
         /// Gets or sets the base URI for all HTTP requests. Setting this value rebuilds the request headers.
@@ -38,32 +39,108 @@ namespace TaskRunner.Classes
 
         private static void BuildHeaders()
         {
-            client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-            client.DefaultRequestHeaders.CacheControl = new CacheControlHeaderValue
+            lock (headerLock)
             {
-                NoCache = true
-            };
+                // client.DefaultRequestHeaders.Accept.Clear();
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            // add client supplied headers
-            if (Headers != null)
-            {
-                foreach (KeyValuePair<string, string> header in Headers)
+                client.DefaultRequestHeaders.CacheControl = new CacheControlHeaderValue
                 {
-                    if (client.DefaultRequestHeaders.Contains(header.Key))
+                    NoCache = true
+                };
+
+                // add client supplied headers
+                if (Headers != null)
+                {
+                    var headerSnapshot = Headers.ToList();
+                    foreach (KeyValuePair<string, string> header in headerSnapshot)
                     {
-                        client.DefaultRequestHeaders.Remove(header.Key);
+                        if (string.IsNullOrWhiteSpace(header.Key) || string.IsNullOrWhiteSpace(header.Value))
+                        {
+                            continue;
+                        }
+
+                        if (client.DefaultRequestHeaders.Contains(header.Key))
+                        {
+                            client.DefaultRequestHeaders.Remove(header.Key);
+                        }
+                        client.DefaultRequestHeaders.Add(header.Key, header.Value);
                     }
-                    client.DefaultRequestHeaders.Add(header.Key, header.Value);
+                }
+
+                // Defensive cleanup: remove any headers with empty keys that may have been added elsewhere
+                var invalidKeys = client.DefaultRequestHeaders
+                    .Where(h => string.IsNullOrWhiteSpace(h.Key))
+                    .Select(h => h.Key)
+                    .ToList();
+
+                var keysToRemove = invalidKeys
+                    .Where(key => !string.IsNullOrWhiteSpace(key))
+                    .ToList();
+
+                foreach (var key in keysToRemove)
+                {
+                    client.DefaultRequestHeaders.Remove(key);
                 }
             }
         }
 
+        private static Dictionary<string, string> _headers = new Dictionary<string, string>();
+
         /// <summary>
-        /// Gets or sets additional HTTP headers to be included in requests.
+        /// Gets a read-only view of HTTP headers to be included in requests.
+        /// Use SetHeaders, SetHeader, or RemoveHeader to modify headers in a thread-safe way.
         /// </summary>
-        public static Dictionary<string, string> Headers { get; set; } = new Dictionary<string, string>();
+        public static IReadOnlyDictionary<string, string> Headers => _headers;
+
+        /// <summary>
+        /// Replaces the header dictionary in a thread-safe way.
+        /// </summary>
+        public static void SetHeaders(Dictionary<string, string> headers)
+        {
+            lock (headerLock)
+            {
+                _headers = headers ?? new Dictionary<string, string>();
+            }
+        }
+
+        /// <summary>
+        /// Adds or updates a header in a thread-safe way. Removes the header if value is null/whitespace.
+        /// </summary>
+        public static void SetHeader(string key, string? value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            lock (headerLock)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _headers.Remove(key);
+                    return;
+                }
+
+                _headers[key] = value;
+            }
+        }
+
+        /// <summary>
+        /// Removes a header in a thread-safe way.
+        /// </summary>
+        public static void RemoveHeader(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            lock (headerLock)
+            {
+                _headers.Remove(key);
+            }
+        }
 
         private static HttpClient client = CreateHttpClient();
 
