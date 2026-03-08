@@ -43,6 +43,8 @@ The task runner is configured through a hierarchical system (later values overri
 | `ClientName` | System hostname | No | Name to register with the server |
 | `ollama_url` | (empty) | No | URL of Ollama service for AI tasks |
 | `EnableAutoUpdate` | `true` | No | Enable automatic update checking and installation from GitHub releases |
+| `TaskCount` | 1 | No | Run multiple tasks at once |
+| `notui` | `false` | No | If true, disables the text interface |
 
 **Security Note**: Sensitive configuration values (`APIKey`, `ollama_url`) are automatically redacted in help text and logs. When loading from environment variables, the task runner will warn you that these values are visible to other processes and recommend using the configuration file instead.
 
@@ -61,7 +63,8 @@ The task runner is configured through a hierarchical system (later values overri
   --APIKey your-api-key-here \
   --HostAddress https://taskserver.example.com \
   --ClientName my-worker-1 \
-  --ollama_url http://localhost:11434
+  --ollama_url http://localhost:11434 \
+  --TaskCount 1
 ```
 
 ### Using Environment Variables
@@ -71,6 +74,7 @@ export APIKey="your-api-key-here"
 export HostAddress="https://taskserver.example.com"
 export ClientName="my-worker-1"
 export ollama_url="http://localhost:11434"
+export TaskCount="1"
 
 ./hasheous-taskrunner
 ```
@@ -84,7 +88,8 @@ Create `~/.hasheous-taskrunner/config.json`:
   "APIKey": "your-api-key-here",
   "HostAddress": "https://taskserver.example.com",
   "ClientName": "my-worker-1",
-  "ollama_url": "http://localhost:11434"
+  "ollama_url": "http://localhost:11434",
+  "TaskCount": "1"
 }
 ```
 
@@ -167,6 +172,7 @@ services:
       - HostAddress=https://hasheous.org/
       - APIKey=your-api-key-here
       - ollama_url=http://localhost:11434
+      - TaskCount=1
 volumes:
   hasheous-taskrunner:
 ```
