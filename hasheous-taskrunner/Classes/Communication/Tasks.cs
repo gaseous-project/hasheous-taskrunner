@@ -1,4 +1,5 @@
 using hasheous_taskrunner.Classes.Tasks;
+using static hasheous_taskrunner.Classes.Helpers.StatusUpdate;
 
 namespace hasheous_taskrunner.Classes.Communication
 {
@@ -70,6 +71,103 @@ namespace hasheous_taskrunner.Classes.Communication
                     activeTaskRunners.Remove(jobId);
                     activeTaskExecutors.Remove(jobId);
                     Console.WriteLine($"Task {jobId} completed and removed from active runners.");
+                }
+
+                // progress existing tasks before fetching new ones
+                foreach (var executor in activeTaskExecutors.Values)
+                {
+                    switch (executor.job.Status)
+                    {
+                        case QueueItemStatus.Assigned:
+                            // task has been assigned and needs to be verified
+                            try
+                            {
+                                executor.job.Status = QueueItemStatus.Verifying;
+                                Console.WriteLine($"Verifying task ID {executor.job.Id}...");
+                                await executor.VerifyTaskAsync(cancellationToken);
+                                Console.WriteLine($"Verification result for task ID {executor.job.Id}: {executor.VerificationResult.Status}");
+                                executor.job.Status = QueueItemStatus.Verified;
+                                cancellationToken.ThrowIfCancellationRequested();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Task {executor.job.Id} verification failed: {ex.Message}");
+                                executor.job.Status = QueueItemStatus.Failed;
+                            }
+                            break;
+
+                        case QueueItemStatus.Verified:
+                            // task has been verified and needs to be acknowledged
+                            string acknowledgeUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job";
+
+                            Dictionary<string, object> ackPayload = new Dictionary<string, object>
+                            {
+                                { "task_id", executor.job.Id }
+                            };
+                            QueueItemStatus verificationTargetStatus;
+                            if (executor.VerificationResult.Status == TaskVerificationResult.VerificationStatus.Success)
+                            {
+                                verificationTargetStatus = QueueItemStatus.WaitingToStart;
+                                ackPayload["status"] = QueueItemStatus.InProgress.ToString();
+                                ackPayload["result"] = "";
+                                ackPayload["error_message"] = "";
+                            }
+                            else
+                            {
+                                verificationTargetStatus = QueueItemStatus.Failed;
+                                ackPayload["status"] = QueueItemStatus.Failed.ToString();
+                                ackPayload["result"] = "";
+                                ackPayload["error_message"] = executor.VerificationResult.Details;
+                            }
+
+                            Console.WriteLine($"Acknowledging task ID {executor.job.Id} with status {ackPayload["status"]}...");
+
+                            try
+                            {
+                                await Common.Post<object>(acknowledgeUrl, ackPayload);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Acknowledgment failed for task ID {executor.job.Id}: {ex.Message}");
+                            }
+
+                            // Update the job status based on verification result
+                            executor.job.Status = verificationTargetStatus;
+
+                            // if verification failed, do not execute
+                            if (executor.VerificationResult.Status != TaskVerificationResult.VerificationStatus.Success)
+                            {
+                                Console.WriteLine($"Skipping execution of task ID {executor.job.Id} due to verification failure.");
+                                executor.job.Status = QueueItemStatus.Failed;
+                            }
+
+                            break;
+
+                        case QueueItemStatus.WaitingToStart:
+                            // task is waiting to start, so we can execute it
+                            executor.job.Status = QueueItemStatus.InProgress;
+                            Console.WriteLine($"Starting execution of task ID {executor.job.Id}...");
+                            _ = Task.Run(() => executor.ExecuteTaskAsync(cancellationToken), cancellationToken);
+                            break;
+
+                        case QueueItemStatus.WaitingForSubmission:
+                            // task is waiting for submission, so we can submit it
+                            executor.job.Status = QueueItemStatus.Submitted;
+                            Console.WriteLine($"Submitting task ID {executor.job.Id}...");
+
+                            Dictionary<string, object> submissionPayload = new Dictionary<string, object>
+                            {
+                                { "status", QueueItemStatus.Submitted.ToString() },
+                                { "result", executor.ExecutionResult.ContainsKey("response") ? executor.ExecutionResult["response"] : "" },
+                                { "error_message", executor.ExecutionResult.ContainsKey("error") ? executor.ExecutionResult["error"] : "" }
+                            };
+                            break;
+
+                        default:
+                            Console.WriteLine($"Task {executor.job.Id} is in an unknown status: {executor.job.Status}");
+                            executor.job.Status = QueueItemStatus.Failed;
+                            break;
+                    }
                 }
 
                 // report current status before fetching new tasks

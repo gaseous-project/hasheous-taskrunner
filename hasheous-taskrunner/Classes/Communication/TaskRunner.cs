@@ -12,6 +12,12 @@ namespace hasheous_taskrunner.Classes.Communication
         /// </summary>
         public TaskItem job { get; private set; }
 
+        private ITask? handler { get; set; } = null;
+
+        public TaskVerificationResult VerificationResult { get; private set; }
+
+        public Dictionary<string, object> ExecutionResult { get; private set; } = new Dictionary<string, object>();
+
         /// <summary>
         /// Initializes a new instance of the TaskRunner class with the specified task item.
         /// </summary>
@@ -21,6 +27,29 @@ namespace hasheous_taskrunner.Classes.Communication
         public TaskExecutor(TaskItem job)
         {
             this.job = job;
+            this.job.Status = QueueItemStatus.Assigned;
+
+            // find the appropriate task handler based on job.TaskName = ITask.TaskType
+            var taskType = typeof(ITask);
+            var taskHandlers = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(s => s.GetTypes())
+                .Where(p => taskType.IsAssignableFrom(p) && !p.IsInterface && !p.IsAbstract);
+
+            foreach (var handlerType in taskHandlers)
+            {
+                var instance = Activator.CreateInstance(handlerType) as ITask;
+                if (instance?.TaskType == job.TaskName)
+                {
+                    handler = instance;
+                    break;
+                }
+            }
+
+            if (handler == null)
+            {
+                job.Status = QueueItemStatus.Failed;
+                throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
+            }
         }
 
         /// <summary>
@@ -35,85 +64,85 @@ namespace hasheous_taskrunner.Classes.Communication
             job.Status = QueueItemStatus.Assigned;
             AddStatus(StatusItem.StatusType.Info, $"Fetched task ID {job.Id} of type {job.TaskName}.");
 
-            // find the appropriate task handler based on job.TaskName = ITask.TaskType
-            var taskType = typeof(ITask);
-            var taskHandlers = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(s => s.GetTypes())
-                .Where(p => taskType.IsAssignableFrom(p) && !p.IsInterface && !p.IsAbstract);
+            // // find the appropriate task handler based on job.TaskName = ITask.TaskType
+            // var taskType = typeof(ITask);
+            // var taskHandlers = AppDomain.CurrentDomain.GetAssemblies()
+            //     .SelectMany(s => s.GetTypes())
+            //     .Where(p => taskType.IsAssignableFrom(p) && !p.IsInterface && !p.IsAbstract);
 
-            ITask? handler = null;
-            foreach (var handlerType in taskHandlers)
-            {
-                var instance = Activator.CreateInstance(handlerType) as ITask;
-                if (instance?.TaskType == job.TaskName)
-                {
-                    handler = instance;
-                    break;
-                }
-            }
+            // ITask? handler = null;
+            // foreach (var handlerType in taskHandlers)
+            // {
+            //     var instance = Activator.CreateInstance(handlerType) as ITask;
+            //     if (instance?.TaskType == job.TaskName)
+            //     {
+            //         handler = instance;
+            //         break;
+            //     }
+            // }
 
-            if (handler == null)
-            {
-                job.Status = QueueItemStatus.Failed;
-                AddStatus(StatusItem.StatusType.Error, $"No task handler found for task type: {job.TaskName}");
-                throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
-            }
+            // if (handler == null)
+            // {
+            //     job.Status = QueueItemStatus.Failed;
+            //     AddStatus(StatusItem.StatusType.Error, $"No task handler found for task type: {job.TaskName}");
+            //     throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
+            // }
 
-            // verify the task
-            job.Status = QueueItemStatus.Verifying;
-            AddStatus(StatusItem.StatusType.Info, $"Verifying task ID {job.Id}...");
-            TaskVerificationResult verificationResult = await handler.VerifyAsync(job.Parameters, cancellationToken);
-            AddStatus(StatusItem.StatusType.Info, $"Verification result for task ID {job.Id}: {verificationResult.Status}");
-            cancellationToken.ThrowIfCancellationRequested();
+            // // verify the task
+            // job.Status = QueueItemStatus.Verifying;
+            // AddStatus(StatusItem.StatusType.Info, $"Verifying task ID {job.Id}...");
 
-            // acknowledge receipt of the task
-            string acknowledgeUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job";
-            Dictionary<string, object> ackPayload = new Dictionary<string, object>
-            {
-                { "task_id", job.Id }
-            };
-            if (verificationResult.Status == TaskVerificationResult.VerificationStatus.Success)
-            {
-                job.Status = QueueItemStatus.InProgress;
-                ackPayload["status"] = QueueItemStatus.InProgress.ToString();
-                ackPayload["result"] = "";
-                ackPayload["error_message"] = "";
-            }
-            else
-            {
-                job.Status = QueueItemStatus.Failed;
-                ackPayload["status"] = QueueItemStatus.Failed.ToString();
-                ackPayload["result"] = "";
-                ackPayload["error_message"] = verificationResult.Details;
-            }
-            AddStatus(StatusItem.StatusType.Info, $"Acknowledging task ID {job.Id} with status {ackPayload["status"]}...");
+            // AddStatus(StatusItem.StatusType.Info, $"Verification result for task ID {job.Id}: {verificationResult.Status}");
+            // cancellationToken.ThrowIfCancellationRequested();
 
-            // Acknowledge with retry: wait 1 second and retry up to 3 times on failure
-            int ackRetries = 0;
-            const int maxAckRetries = 3;
-            while (true)
-            {
-                try
-                {
-                    await Common.Post<object>(acknowledgeUrl, ackPayload);
-                    AddStatus(StatusItem.StatusType.Info, "Acknowledgment done.");
-                    break;
-                }
-                catch (Exception ex) when (ackRetries < maxAckRetries)
-                {
-                    ackRetries++;
-                    AddStatus(StatusItem.StatusType.Warning, $"Acknowledgment failed: {ex.Message}. Retrying in 1 second... (Attempt {ackRetries}/{maxAckRetries})");
-                    await Task.Delay(TimeSpan.FromSeconds(1));
-                }
-            }
-            cancellationToken.ThrowIfCancellationRequested();
+            // // acknowledge receipt of the task
+            // string acknowledgeUrl = $"{Config.BaseUriPath}/clients/{Config.GetAuthValue("client_id")}/job";
+            // Dictionary<string, object> ackPayload = new Dictionary<string, object>
+            // {
+            //     { "task_id", job.Id }
+            // };
+            // if (verificationResult.Status == TaskVerificationResult.VerificationStatus.Success)
+            // {
+            //     job.Status = QueueItemStatus.InProgress;
+            //     ackPayload["status"] = QueueItemStatus.InProgress.ToString();
+            //     ackPayload["result"] = "";
+            //     ackPayload["error_message"] = "";
+            // }
+            // else
+            // {
+            //     job.Status = QueueItemStatus.Failed;
+            //     ackPayload["status"] = QueueItemStatus.Failed.ToString();
+            //     ackPayload["result"] = "";
+            //     ackPayload["error_message"] = verificationResult.Details;
+            // }
+            // AddStatus(StatusItem.StatusType.Info, $"Acknowledging task ID {job.Id} with status {ackPayload["status"]}...");
 
-            // if verification failed, do not execute
-            if (verificationResult.Status != TaskVerificationResult.VerificationStatus.Success)
-            {
-                AddStatus(StatusItem.StatusType.Info, $"Skipping execution of task ID {job.Id} due to verification failure.");
-                return;
-            }
+            // // Acknowledge with retry: wait 1 second and retry up to 3 times on failure
+            // int ackRetries = 0;
+            // const int maxAckRetries = 3;
+            // while (true)
+            // {
+            //     try
+            //     {
+            //         await Common.Post<object>(acknowledgeUrl, ackPayload);
+            //         AddStatus(StatusItem.StatusType.Info, "Acknowledgment done.");
+            //         break;
+            //     }
+            //     catch (Exception ex) when (ackRetries < maxAckRetries)
+            //     {
+            //         ackRetries++;
+            //         AddStatus(StatusItem.StatusType.Warning, $"Acknowledgment failed: {ex.Message}. Retrying in 1 second... (Attempt {ackRetries}/{maxAckRetries})");
+            //         await Task.Delay(TimeSpan.FromSeconds(1));
+            //     }
+            // }
+            // cancellationToken.ThrowIfCancellationRequested();
+
+            // // if verification failed, do not execute
+            // if (verificationResult.Status != TaskVerificationResult.VerificationStatus.Success)
+            // {
+            //     AddStatus(StatusItem.StatusType.Info, $"Skipping execution of task ID {job.Id} due to verification failure.");
+            //     return;
+            // }
 
             // execute the task
             try
@@ -162,6 +191,43 @@ namespace hasheous_taskrunner.Classes.Communication
                     await Task.Delay(TimeSpan.FromSeconds(1));
                 }
             }
+        }
+
+        public async Task<TaskVerificationResult> VerifyTaskAsync(CancellationToken cancellationToken = default)
+        {
+            if (handler == null)
+            {
+                job.Status = QueueItemStatus.Failed;
+                AddStatus(StatusItem.StatusType.Error, $"No task handler found for task type: {job.TaskName}");
+                throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
+            }
+            VerificationResult = await handler.VerifyAsync(job.Parameters, cancellationToken);
+
+            return VerificationResult;
+        }
+
+        public async Task<Dictionary<string, object>> ExecuteTaskAsync(CancellationToken cancellationToken = default)
+        {
+            if (handler == null)
+            {
+                job.Status = QueueItemStatus.Failed;
+                AddStatus(StatusItem.StatusType.Error, $"No task handler found for task type: {job.TaskName}");
+                throw new InvalidOperationException($"No task handler found for task type: {job.TaskName}");
+            }
+            try
+            {
+                ExecutionResult = await handler.ExecuteAsync(job.Parameters, this, cancellationToken);
+
+                // After execution, we set the status to WaitingForSubmission to indicate that the task has been executed and is waiting to be reported back to the host. The actual reporting back is handled in the main task loop, which will update the status to Submitted once the report is sent.
+                job.Status = QueueItemStatus.WaitingForSubmission;
+            }
+            catch (Exception ex)
+            {
+                job.Status = QueueItemStatus.Failed;
+                AddStatus(StatusItem.StatusType.Error, $"Execution of task ID {job.Id} failed: {ex.Message}");
+            }
+
+            return ExecutionResult;
         }
     }
 }

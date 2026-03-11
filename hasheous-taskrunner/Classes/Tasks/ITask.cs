@@ -133,7 +133,19 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <summary>
         /// The task is currently being verified.
         /// </summary>
-        Verifying = 70
+        Verifying = 70,
+        /// <summary>
+        /// The task has been verified successfully.
+        /// </summary>
+        Verified = 71,
+        /// <summary>
+        /// The task is waiting to start after being verified.
+        /// </summary>
+        WaitingToStart = 80,
+        /// <summary>
+        /// The task is waiting for submission after being executed.
+        /// </summary>
+        WaitingForSubmission = 81
     }
 
     /// <summary>
