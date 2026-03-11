@@ -139,13 +139,21 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// </summary>
         Verified = 71,
         /// <summary>
+        /// The task verification failed.
+        /// </summary>
+        VerificationFailure = 72,
+        /// <summary>
         /// The task is waiting to start after being verified.
         /// </summary>
         WaitingToStart = 80,
         /// <summary>
         /// The task is waiting for submission after being executed.
         /// </summary>
-        WaitingForSubmission = 81
+        WaitingForSubmission = 81,
+        /// <summary>
+        /// The task encountered a communication failure.
+        /// </summary>
+        CommsFailure = 90
     }
 
     /// <summary>
@@ -208,7 +216,12 @@ namespace hasheous_taskrunner.Classes.Tasks
             /// <summary>
             /// The verification failed.
             /// </summary>
-            Failure
+            Failure,
+
+            /// <summary> 
+            /// The verification process has not been completed yet.
+            /// </summary>
+            NotYetVerified
         }
     }
 }
