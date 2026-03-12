@@ -3,15 +3,36 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using hasheous_taskrunner.Classes.Communication.Clients;
 using hasheous_taskrunner.Classes.Helpers;
 
 namespace hasheous_taskrunner.Classes.Capabilities
 {
     /// <summary>
     /// Capability to interact with an Ollama instance: connectivity test, model pull, and prompt execution.
+    /// Uses injected IOllamaClient to isolate external service calls from host API credentials.
     /// </summary>
     public class OllamaCapability : ICapability
     {
+        private readonly IOllamaClient? _ollamaClient;
+
+        /// <summary>
+        /// Creates a new OllamaCapability instance with default client behavior.
+        /// Required for reflection-based activation.
+        /// </summary>
+        public OllamaCapability() : this(null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a new OllamaCapability instance.
+        /// </summary>
+        /// <param name="ollamaClient">The Ollama service client. If null, will be created on-demand during operations.</param>
+        public OllamaCapability(IOllamaClient? ollamaClient = null)
+        {
+            _ollamaClient = ollamaClient;
+        }
+
         /// <inheritdoc/>
         public int CapabilityId => 20;
 
@@ -98,16 +119,15 @@ namespace hasheous_taskrunner.Classes.Capabilities
 
             try
             {
-                using var http = CreateHttpClient(baseUrl);
-                var resp = await http.GetAsync("/api/version");
-                if (!resp.IsSuccessStatusCode)
+                var client = _ollamaClient ?? new OllamaClient(baseUrl);
+                var resp = await client.GetAsync<Dictionary<string, object>>("/api/version");
+                if (resp == null)
                 {
-                    Console.WriteLine($"OllamaCapability: version check failed with status {(int)resp.StatusCode}.");
+                    Console.WriteLine($"OllamaCapability: version check failed or returned null.");
                     return false;
                 }
 
-                var content = await resp.Content.ReadAsStringAsync();
-                Console.WriteLine($"OllamaCapability: Connected to Ollama. Version response: {content}");
+                Console.WriteLine($"OllamaCapability: Connected to Ollama. Version response received.");
                 return true;
             }
             catch (Exception ex)
@@ -118,7 +138,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
         }
 
         /// <inheritdoc/>
-        public async Task PullModelIfExists(HttpClient http, string model, StatusUpdate? statusUpdate = null)
+        public async Task PullModelIfExists(IOllamaClient client, string model, StatusUpdate? statusUpdate = null)
         {
             // check if model name is suffixed with a tag (e.g., model:tag). If not, add ":latest"
             if (!model.Contains(":"))
@@ -126,25 +146,20 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 model += ":latest";
             }
 
-            var listResp = await http.GetAsync("/api/tags");
+            var listResp = await client.GetAsync<PullModelResult>("/api/tags");
             bool modelExists = false;
-            if (listResp.IsSuccessStatusCode)
+            if (listResp != null && listResp.models != null)
             {
-                var listJson = await listResp.Content.ReadAsStringAsync();
-                var listResult = JsonSerializer.Deserialize<PullModelResult>(listJson);
-                if (listResult != null && listResult.models != null)
+                foreach (var m in listResp.models)
                 {
-                    foreach (var m in listResult.models)
+                    if (m.name == model)
                     {
-                        if (m.name == model)
+                        // check if size > 0 (indicates downloaded) and modified_at is recent
+                        if (m.size > 0 && (DateTime.UtcNow - m.modified_at).TotalDays < 30)
                         {
-                            // check if size > 0 (indicates downloaded) and modified_at is recent
-                            if (m.size > 0 && (DateTime.UtcNow - m.modified_at).TotalDays < 30)
-                            {
-                                modelExists = true;
-                            }
-                            break;
+                            modelExists = true;
                         }
+                        break;
                     }
                 }
             }
@@ -154,13 +169,11 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 // model not found locally or outdated - pull it
                 if (statusUpdate != null) statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Pulling model '{model}'...");
                 var pullBody = new { name = model, stream = false };
-                var pullJson = JsonSerializer.Serialize(pullBody);
-                var pullResp = await http.PostAsync("/api/pull", new StringContent(pullJson, Encoding.UTF8, "application/json"));
+                var pullResp = await client.PostAsync<Dictionary<string, object>>("/api/pull", pullBody);
 
-                if (!pullResp.IsSuccessStatusCode)
+                if (pullResp == null)
                 {
-                    var pullErr = await pullResp.Content.ReadAsStringAsync();
-                    throw new Exception($"Model pull failed: {(int)pullResp.StatusCode} {pullErr}");
+                    throw new Exception($"Model pull failed: response was null or unsuccessful");
                 }
             }
         }
@@ -241,21 +254,21 @@ namespace hasheous_taskrunner.Classes.Capabilities
 
             try
             {
-                using var http = CreateHttpClient(baseUrl);
+                var client = _ollamaClient ?? new OllamaClient(baseUrl);
 
                 // 1) Connectivity sanity check
-                var versionResp = await http.GetAsync("/api/version");
-                if (!versionResp.IsSuccessStatusCode)
+                var versionResp = await client.GetAsync<Dictionary<string, object>>("/api/version");
+                if (versionResp == null)
                 {
                     result["result"] = false;
-                    result["error"] = $"Failed to connect to Ollama: {(int)versionResp.StatusCode}";
+                    result["error"] = $"Failed to connect to Ollama: connectivity test failed";
                     return result;
                 }
 
                 // 2) Pull model (stream: false for simpler handling)
                 try
                 {
-                    await PullModelIfExists(http, model, statusUpdate);
+                    await PullModelIfExists(client, model, statusUpdate);
                 }
                 catch (Exception ex)
                 {
@@ -324,7 +337,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     // Ensure embedding model is available
                     try
                     {
-                        await PullModelIfExists(http, embedModel, statusUpdate);
+                        await PullModelIfExists(client, embedModel, statusUpdate);
                     }
                     catch (Exception ex)
                     {
@@ -339,13 +352,13 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     int docIndex = 1;
                     foreach (var text in embeddingTexts)
                     {
-                        var emb = await GetEmbeddingAsync(http, embedModel, text);
+                        var emb = await GetEmbeddingAsync(client, embedModel, text);
                         if (emb != null) docEmbeddings.Add(emb);
                         else docEmbeddings.Add(Array.Empty<double>());
                         docIndex++;
                     }
 
-                    var queryEmbedding = await GetEmbeddingAsync(http, embedModel, prompt) ?? Array.Empty<double>();
+                    var queryEmbedding = await GetEmbeddingAsync(client, embedModel, prompt) ?? Array.Empty<double>();
 
                     // Rank by cosine similarity
                     var ranked = new List<(int idx, double score)>();
@@ -382,29 +395,25 @@ namespace hasheous_taskrunner.Classes.Capabilities
                             temperature = temperature
                         }
                     };
-                    var genJson = JsonSerializer.Serialize(genBody);
-                    var genResp = await http.PostAsync("/api/generate", new StringContent(genJson, Encoding.UTF8, "application/json"));
-                    if (!genResp.IsSuccessStatusCode)
+                    var genResp = await client.PostAsync<Dictionary<string, object>>("/api/generate", genBody);
+                    if (genResp == null)
                     {
-                        var genErr = await genResp.Content.ReadAsStringAsync();
                         result["result"] = false;
-                        result["error"] = $"Generate failed: {(int)genResp.StatusCode} {genErr}";
+                        result["error"] = $"Generate failed: response was null or unsuccessful";
                         return result;
                     }
 
-                    var genContent = await genResp.Content.ReadAsStringAsync();
                     responseText = string.Empty;
                     try
                     {
-                        using var doc = JsonDocument.Parse(genContent);
-                        if (doc.RootElement.TryGetProperty("response", out var respProp))
+                        if (genResp.ContainsKey("response"))
                         {
-                            responseText = respProp.GetString() ?? string.Empty;
+                            responseText = Convert.ToString(genResp["response"]) ?? string.Empty;
                         }
                     }
                     catch
                     {
-                        responseText = genContent;
+                        responseText = string.Empty;
                     }
                 }
                 else
@@ -423,29 +432,25 @@ namespace hasheous_taskrunner.Classes.Capabilities
                             temperature = 0.2
                         }
                     };
-                    var genJson = JsonSerializer.Serialize(genBody);
-                    var genResp = await http.PostAsync("/api/generate", new StringContent(genJson, Encoding.UTF8, "application/json"));
-                    if (!genResp.IsSuccessStatusCode)
+                    var genResp = await client.PostAsync<Dictionary<string, object>>("/api/generate", genBody);
+                    if (genResp == null)
                     {
-                        var genErr = await genResp.Content.ReadAsStringAsync();
                         result["result"] = false;
-                        result["error"] = $"Generate failed: {(int)genResp.StatusCode} {genErr}";
+                        result["error"] = $"Generate failed: response was null or unsuccessful";
                         return result;
                     }
 
-                    var genContent = await genResp.Content.ReadAsStringAsync();
                     responseText = string.Empty;
                     try
                     {
-                        using var doc = JsonDocument.Parse(genContent);
-                        if (doc.RootElement.TryGetProperty("response", out var respProp))
+                        if (genResp.ContainsKey("response"))
                         {
-                            responseText = respProp.GetString() ?? string.Empty;
+                            responseText = Convert.ToString(genResp["response"]) ?? string.Empty;
                         }
                     }
                     catch
                     {
-                        responseText = genContent;
+                        responseText = string.Empty;
                     }
                 }
                 stopWatch.Stop();
@@ -486,13 +491,13 @@ namespace hasheous_taskrunner.Classes.Capabilities
             return http;
         }
 
-        private async Task<double[]?> GetEmbeddingAsync(HttpClient http, string embedModel, string text)
+        private async Task<double[]?> GetEmbeddingAsync(IOllamaClient client, string embedModel, string text)
         {
             // Chunk text if too long (8000 chars ≈ 2000 tokens for most models)
             const int maxChunkSize = 8000;
             if (text.Length <= maxChunkSize)
             {
-                return await GetSingleEmbeddingAsync(http, embedModel, text);
+                return await GetSingleEmbeddingAsync(client, embedModel, text);
             }
 
             // Split into chunks and average embeddings
@@ -505,7 +510,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
             var embeddings = new List<double[]>();
             foreach (var chunk in chunks)
             {
-                var emb = await GetSingleEmbeddingAsync(http, embedModel, chunk);
+                var emb = await GetSingleEmbeddingAsync(client, embedModel, chunk);
                 if (emb != null) embeddings.Add(emb);
             }
 
@@ -529,27 +534,38 @@ namespace hasheous_taskrunner.Classes.Capabilities
             return avgEmb;
         }
 
-        private async Task<double[]?> GetSingleEmbeddingAsync(HttpClient http, string embedModel, string text)
+        private async Task<double[]?> GetSingleEmbeddingAsync(IOllamaClient client, string embedModel, string text)
         {
             var body = new { model = embedModel, prompt = text };
-            var json = JsonSerializer.Serialize(body);
-            var resp = await http.PostAsync("/api/embeddings", new StringContent(json, Encoding.UTF8, "application/json"));
-            if (!resp.IsSuccessStatusCode)
+            var resp = await client.PostAsync<Dictionary<string, object>>("/api/embeddings", body);
+            if (resp == null || !resp.ContainsKey("embedding"))
             {
                 return null;
             }
-            var content = await resp.Content.ReadAsStringAsync();
+
             try
             {
-                using var doc = JsonDocument.Parse(content);
-                if (doc.RootElement.TryGetProperty("embedding", out var embProp))
+                var embeddingObj = resp["embedding"];
+                if (embeddingObj is System.Text.Json.JsonElement elem)
                 {
                     var list = new List<double>();
-                    foreach (var v in embProp.EnumerateArray())
+                    foreach (var v in elem.EnumerateArray())
                     {
                         list.Add(v.GetDouble());
                     }
                     return list.ToArray();
+                }
+                else if (embeddingObj is IEnumerable<object> objList)
+                {
+                    var list = new List<double>();
+                    foreach (var v in objList)
+                    {
+                        if (double.TryParse(Convert.ToString(v), out var dval))
+                        {
+                            list.Add(dval);
+                        }
+                    }
+                    return list.Count > 0 ? list.ToArray() : null;
                 }
             }
             catch { }

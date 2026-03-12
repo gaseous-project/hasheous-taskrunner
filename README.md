@@ -43,6 +43,7 @@ The task runner is configured through a hierarchical system (later values overri
 | `ClientName` | System hostname | No | Name to register with the server |
 | `ollama_url` | (empty) | No | URL of Ollama service for AI tasks |
 | `EnableAutoUpdate` | `true` | No | Enable automatic update checking and installation from GitHub releases |
+| `AllowInsecureUpdate` | `false` | No | Allow updates to proceed when checksum cannot be fetched or verification fails (not recommended) |
 | `TaskCount` | 1 | No | Run multiple tasks at once |
 | `notui` | `false` | No | If true, disables the text interface |
 
@@ -208,10 +209,17 @@ All GitHub releases include:
 
 The updater will:
 - Verify checksums before applying updates (when available)
-- Abort updates if checksums don't match
-- Warn if checksum files are missing
+- Block updates by default if checksum files are missing, cannot be fetched, or verification fails
 - Create backups before modifying files
 - Automatically rollback on failure
+
+To explicitly allow insecure updates (not recommended), set:
+
+```json
+{
+  "AllowInsecureUpdate": "true"
+}
+```
 
 ### Disabling Auto-Updates
 
@@ -250,6 +258,35 @@ Once started, the task runner:
 7. **Auto-reregisters** periodically to ensure server knows it's alive
 
 ### Graceful Shutdown
+
+## Manual Verification Checklist
+
+Use this checklist before production rollout, especially when registration health is unstable.
+
+### Interactive Mode (UserInteractive=true)
+
+- Start the runner with valid config and confirm normal intake/execution.
+- Simulate registration failure (invalid host/API key or network outage).
+- Confirm logs show registration health degraded and new task intake blocked.
+- Confirm in-flight tasks continue to completion/submission while blocked.
+- Confirm process exits only after in-flight tasks are drained.
+- Confirm exit guidance is printed with actionable recovery steps.
+
+### Unattended Mode (service/container)
+
+- Start in unattended context (Windows service or container).
+- Simulate registration failure.
+- Confirm logs show blocked intake and recovery attempts with backoff.
+- Confirm process remains alive while recovery loop runs.
+- Restore connectivity/auth and confirm state returns to healthy.
+- Confirm new task intake resumes automatically after recovery.
+
+### HTTP Boundary and Auth Hygiene
+
+- Verify host API calls include either `X-API-Key` (bootstrap) or `X-TaskWorker-API-Key` (worker) as appropriate.
+- Verify non-host absolute URLs are rejected by host client paths.
+- Verify host auth headers are not sent to Ollama/external endpoints.
+
 
 Press `Ctrl+C` to gracefully shut down. The runner will:
 - Stop accepting new tasks

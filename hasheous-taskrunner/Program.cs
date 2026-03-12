@@ -77,6 +77,10 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
         TUIManager.Initialize();
     }
 
+    bool isUnattendedMode = !Environment.UserInteractive || IsRunningInContainer();
+    bool interactiveDrainNoticeShown = false;
+    bool unattendedBlockedNoticeShown = false;
+
     Console.WriteLine("");
     Console.WriteLine("Task worker is now registered and ready to receive tasks.");
 
@@ -152,24 +156,54 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
                 Console.WriteLine($"[ERROR] Update check failed: {ex.Message}");
             }
 
-            // Fetch and execute tasks if due
-            if (!hasheous_taskrunner.Classes.Communication.Tasks.IsRunningTask)
+            // Fetch and execute tasks if due (internally guarded to prevent overlapping cycles)
+            _ = Task.Run(async () =>
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    await hasheous_taskrunner.Classes.Communication.Tasks.FetchAndExecuteTasksIfDue(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine("[INFO] Task execution was cancelled.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Error in background task: {ex.Message}");
+                }
+            });
+
+            if (hasheous_taskrunner.Classes.Communication.Registration.ShouldBlockNewTasks)
+            {
+                int activeTaskCount = hasheous_taskrunner.Classes.Communication.Tasks.GetActiveTaskExecutorsSnapshot().Count;
+
+                if (isUnattendedMode)
+                {
+                    if (!unattendedBlockedNoticeShown)
                     {
-                        await hasheous_taskrunner.Classes.Communication.Tasks.FetchAndExecuteTasksIfDue(cts.Token);
+                        Console.WriteLine("[WARNING] Registration is unhealthy. New task intake is blocked, running unattended recovery loop.");
+                        unattendedBlockedNoticeShown = true;
                     }
-                    catch (OperationCanceledException)
+                }
+                else
+                {
+                    if (activeTaskCount == 0)
                     {
-                        Console.WriteLine("[INFO] Task execution was cancelled.");
+                        Console.WriteLine("[ERROR] Registration is unhealthy and interactive mode is enabled.");
+                        Console.WriteLine("[INFO] In-flight tasks are drained. Exiting now; fix host connectivity/auth and restart runner.");
+                        cts.Cancel();
                     }
-                    catch (Exception ex)
+                    else if (!interactiveDrainNoticeShown)
                     {
-                        Console.WriteLine($"[ERROR] Error in background task: {ex.Message}");
+                        Console.WriteLine($"[WARNING] Registration is unhealthy. New task intake is blocked. Waiting for {activeTaskCount} in-flight task(s) to complete before exit.");
+                        interactiveDrainNoticeShown = true;
                     }
-                });
+                }
+            }
+            else
+            {
+                interactiveDrainNoticeShown = false;
+                unattendedBlockedNoticeShown = false;
             }
 
             try
@@ -234,3 +268,18 @@ else
 
 // Keep the console window open
 Console.WriteLine("Task worker has stopped.");
+
+static bool IsRunningInContainer()
+{
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("INDOCKER")))
+    {
+        return true;
+    }
+
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOCKER_CONTAINER")))
+    {
+        return true;
+    }
+
+    return File.Exists("/.dockerenv");
+}

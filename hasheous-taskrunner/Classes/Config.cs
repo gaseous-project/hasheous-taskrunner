@@ -44,7 +44,7 @@ namespace hasheous_taskrunner.Classes
             get
             {
                 // existing default version to return if assembly lookup fails
-                Version defaultVersion = new Version(1, 1, 0, 0);
+                Version defaultVersion = new Version(1, 1, 1, 0);
 
                 try
                 {
@@ -83,6 +83,7 @@ namespace hasheous_taskrunner.Classes
             { "ClientName", ClientName },
             { "ollama_url", "" },
             { "EnableAutoUpdate", "true" },
+            { "AllowInsecureUpdate", "false" },
             { "notui", "false" },
             { "TaskCount", "1" }
         };

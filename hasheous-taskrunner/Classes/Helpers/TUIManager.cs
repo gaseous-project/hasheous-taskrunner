@@ -114,19 +114,30 @@ namespace hasheous_taskrunner.Classes.Helpers
 
                     // Full redraw every 2 seconds to keep static borders intact
                     var now = DateTime.UtcNow;
-                    if (now - _lastFullRedraw >= TimeSpan.FromSeconds(2))
+                    if (OperatingSystem.IsWindows())
                     {
-                        // Re-enter alternate buffer and clear to avoid scrollback pollution
-                        _directOutput.Write("\x1b[?1049h\x1b[H\x1b[2J");
-                        _lastFullRedraw = now;
+                        // Windows console can get corrupted with rapid redraws, so we do a full clear less frequently
+                        _directOutput.Write("\x1b[H");
                     }
                     else
                     {
-                        _directOutput.Write("\x1b[H");
+                        // On Unix-based systems, we can do more frequent redraws without corruption, so we just move the cursor to the top. A full redraw is still done every 2 seconds to prevent any potential issues with very long-running sessions.
+                        if (now - _lastFullRedraw >= TimeSpan.FromSeconds(2))
+                        {
+                            // Re-enter alternate buffer and clear to avoid scrollback pollution
+                            _directOutput.Write("\x1b[?1049h\x1b[H\x1b[2J");
+                            _lastFullRedraw = now;
+                        }
+                        else
+                        {
+                            _directOutput.Write("\x1b[H");
+                        }
                     }
 
                     // Top border with title and status
                     DrawTopBorder(width);
+
+                    var activeTaskSnapshot = Communication.Tasks.GetActiveTaskExecutorsSnapshot();
 
                     // Handle tiny terminal heights without scrolling
                     if (height < 8)
@@ -140,12 +151,12 @@ namespace hasheous_taskrunner.Classes.Helpers
                                 DrawEmptyLine(width, "Window too small");
                             }
                         }
-                        DrawBottomBorder(width);
+                        DrawBottomBorder(width, activeTaskSnapshot);
                         _directOutput.Flush();
                         return;
                     }
 
-                    int activeTaskCount = Communication.Tasks.ActiveTaskExecutors.Count;
+                    int activeTaskCount = activeTaskSnapshot.Count;
                     int availableWithConsole = height - 3; // top + separator + bottom
                     int availableNoConsole = height - 2; // top + bottom
                     int maxLogsPerTask = 2;
@@ -178,7 +189,7 @@ namespace hasheous_taskrunner.Classes.Helpers
                     }
 
                     // Task list pane
-                    DrawTaskPane(width, taskPaneHeight, maxLogsPerTask);
+                    DrawTaskPane(width, taskPaneHeight, maxLogsPerTask, activeTaskSnapshot);
 
                     if (showConsoleLog)
                     {
@@ -190,7 +201,7 @@ namespace hasheous_taskrunner.Classes.Helpers
                     }
 
                     // Bottom border with task count and capabilities
-                    DrawBottomBorder(width);
+                    DrawBottomBorder(width, activeTaskSnapshot);
 
                     _directOutput.Flush();
                 }
@@ -217,7 +228,12 @@ namespace hasheous_taskrunner.Classes.Helpers
 
             // Date, time, and CPU
             UpdateCpuUsage();
-            string rightInfo = $" {DateTime.Now:yyyy-MM-dd HH:mm:ss} | CPU: {_cpuUsage:F1}% ";
+            string[] rightInfoParts = new string[]
+            {
+                // $"CPU: {_cpuUsage:F1}%",
+                $"{DateTime.Now:yyyy-MM-dd HH:mm}"
+            };
+            string rightInfo = $" {string.Join(" | ", rightInfoParts)} ";
 
             // Calculate padding
             int padding = width - title.Length - rightInfo.Length - 2;
@@ -231,12 +247,10 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.WriteLine("╗\x1b[0m");
         }
 
-        private static void DrawBottomBorder(int width)
+        private static void DrawBottomBorder(int width, IReadOnlyDictionary<long, TaskExecutor> activeTasks)
         {
             if (_directOutput == null) return;
 
-            // Get task count
-            var activeTasks = Communication.Tasks.ActiveTaskExecutors;
             string leftInfo = $" Tasks: {activeTasks.Count}/{Communication.Tasks.MaxConcurrentTasks} ";
 
             // Get capabilities
@@ -270,12 +284,12 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.Write("╝\x1b[0m");
         }
 
-        private static void DrawTaskPane(int width, int paneHeight, int maxLogsPerTask)
+        private static void DrawTaskPane(int width, int paneHeight, int maxLogsPerTask, IReadOnlyDictionary<long, TaskExecutor> activeTaskSnapshot)
         {
             if (_directOutput == null) return;
 
             int currentLine = 0;
-            var activeTasks = Communication.Tasks.ActiveTaskExecutors
+            var activeTasks = activeTaskSnapshot
                 .OrderBy(kvp => kvp.Key)
                 .ToList();
 
@@ -443,6 +457,10 @@ namespace hasheous_taskrunner.Classes.Helpers
                 Tasks.QueueItemStatus.Completed => "\x1b[32m",    // Green
                 Tasks.QueueItemStatus.Failed => "\x1b[31m",       // Red
                 Tasks.QueueItemStatus.Cancelled => "\x1b[90m",    // Gray
+                Tasks.QueueItemStatus.CommsFailure => "\x1b[31m", // Red
+                Tasks.QueueItemStatus.VerificationFailure => "\x1b[31m", // Red
+                Tasks.QueueItemStatus.WaitingForSubmission => "\x1b[33m", // Yellow
+                Tasks.QueueItemStatus.WaitingToStart => "\x1b[33m", // Yellow
                 _ => "\x1b[37m"                                   // White fallback
             };
 
