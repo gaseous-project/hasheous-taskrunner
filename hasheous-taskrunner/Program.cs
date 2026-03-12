@@ -78,7 +78,6 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
     }
 
     bool isUnattendedMode = !Environment.UserInteractive || IsRunningInContainer();
-    bool interactiveDrainNoticeShown = false;
     bool unattendedBlockedNoticeShown = false;
 
     Console.WriteLine("");
@@ -177,32 +176,26 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
             {
                 int activeTaskCount = hasheous_taskrunner.Classes.Communication.Tasks.GetActiveTaskExecutorsSnapshot().Count;
 
-                if (isUnattendedMode)
+                if (!unattendedBlockedNoticeShown)
                 {
-                    if (!unattendedBlockedNoticeShown)
+                    if (isUnattendedMode)
                     {
                         Console.WriteLine("[WARNING] Registration is unhealthy. New task intake is blocked, running unattended recovery loop.");
-                        unattendedBlockedNoticeShown = true;
                     }
-                }
-                else
-                {
-                    if (activeTaskCount == 0)
+                    else
                     {
-                        Console.WriteLine("[ERROR] Registration is unhealthy and interactive mode is enabled.");
-                        Console.WriteLine("[INFO] In-flight tasks are drained. Exiting now; fix host connectivity/auth and restart runner.");
-                        cts.Cancel();
+                        Console.WriteLine("[WARNING] Registration is unhealthy. New task intake is blocked, running interactive recovery loop.");
+                        if (activeTaskCount > 0)
+                        {
+                            Console.WriteLine($"[INFO] {activeTaskCount} in-flight task(s) will continue while registration recovers.");
+                        }
                     }
-                    else if (!interactiveDrainNoticeShown)
-                    {
-                        Console.WriteLine($"[WARNING] Registration is unhealthy. New task intake is blocked. Waiting for {activeTaskCount} in-flight task(s) to complete before exit.");
-                        interactiveDrainNoticeShown = true;
-                    }
+
+                    unattendedBlockedNoticeShown = true;
                 }
             }
             else
             {
-                interactiveDrainNoticeShown = false;
                 unattendedBlockedNoticeShown = false;
             }
 

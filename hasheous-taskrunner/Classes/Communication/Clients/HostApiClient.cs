@@ -113,47 +113,51 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             {
                 EnsureAuthorizedHostUrl(url, method.Method);
 
+                HttpResponseMessage? response = null;
+                string authMode = "unknown";
+
                 try
                 {
                     using var request = CreateRequest(method, url, serializedContent);
-                    string authMode = ApplyAuthHeaders(request);
-                    var response = await _httpClient.SendAsync(request);
-
-                    if ((int)response.StatusCode >= 400)
-                    {
-                        Console.WriteLine($"[WARN] Host API {method.Method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
-                    }
-
-                    // Handle rate limiting
-                    if ((int)response.StatusCode == 429)
-                    {
-                        Console.WriteLine($"[INFO] Host API rate-limited {method.Method} {url}; applying retry policy.");
-                        if (retryCount < MaxRetries)
-                        {
-                            int waitSeconds = await GetRetryDelayAsync(response, retryCount);
-                            await Task.Delay(TimeSpan.FromSeconds(waitSeconds));
-                            retryCount++;
-                            continue;
-                        }
-                    }
-
-                    response.EnsureSuccessStatusCode();
-
-                    var resultStr = await response.Content.ReadAsStringAsync();
-                    var resultObject = JsonConvert.DeserializeObject<T>(resultStr, new JsonSerializerSettings
-                    {
-                        Converters = { new SafeEnumConverter() }
-                    });
-
-                    return resultObject;
+                    authMode = ApplyAuthHeaders(request);
+                    response = await _httpClient.SendAsync(request);
                 }
                 catch (HttpRequestException) when (retryCount < MaxRetries)
                 {
+                    // Only retry genuine transport failures (no response received from server).
                     Console.WriteLine($"[WARN] Host API transport failure for {method.Method} {url}; retrying (attempt {retryCount + 1}/{MaxRetries}).");
                     retryCount++;
                     await Task.Delay(TimeSpan.FromSeconds(1 << retryCount));  // Exponential backoff
                     continue;
                 }
+
+                // Response received — server-returned status codes are not retried as transport failures.
+                if ((int)response.StatusCode >= 400)
+                {
+                    Console.WriteLine($"[WARN] Host API {method.Method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
+                }
+
+                // Handle rate limiting (429) with retry.
+                if ((int)response.StatusCode == 429)
+                {
+                    Console.WriteLine($"[INFO] Host API rate-limited {method.Method} {url}; applying retry policy.");
+                    if (retryCount < MaxRetries)
+                    {
+                        int waitSeconds = await GetRetryDelayAsync(response, retryCount);
+                        await Task.Delay(TimeSpan.FromSeconds(waitSeconds));
+                        retryCount++;
+                        continue;
+                    }
+                }
+
+                // All other error status codes (including 500) throw immediately.
+                response.EnsureSuccessStatusCode();
+
+                var resultStr = await response.Content.ReadAsStringAsync();
+                return JsonConvert.DeserializeObject<T>(resultStr, new JsonSerializerSettings
+                {
+                    Converters = { new SafeEnumConverter() }
+                });
             }
 
             throw new HttpRequestException("Max retries exceeded");
@@ -166,40 +170,46 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             {
                 EnsureAuthorizedHostUrl(url, method.Method);
 
+                HttpResponseMessage? response = null;
+                string authMode = "unknown";
+
                 try
                 {
                     using var request = CreateRequest(method, url, serializedContent);
-                    string authMode = ApplyAuthHeaders(request);
-                    var response = await _httpClient.SendAsync(request);
-
-                    if ((int)response.StatusCode >= 400)
-                    {
-                        Console.WriteLine($"[WARN] Host API {method.Method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
-                    }
-
-                    // Handle rate limiting
-                    if ((int)response.StatusCode == 429)
-                    {
-                        Console.WriteLine($"[INFO] Host API rate-limited {method.Method} {url}; applying retry policy.");
-                        if (retryCount < MaxRetries)
-                        {
-                            int waitSeconds = await GetRetryDelayAsync(response, retryCount);
-                            await Task.Delay(TimeSpan.FromSeconds(waitSeconds));
-                            retryCount++;
-                            continue;
-                        }
-                    }
-
-                    response.EnsureSuccessStatusCode();
-                    return;
+                    authMode = ApplyAuthHeaders(request);
+                    response = await _httpClient.SendAsync(request);
                 }
                 catch (HttpRequestException) when (retryCount < MaxRetries)
                 {
+                    // Only retry genuine transport failures (no response received from server).
                     Console.WriteLine($"[WARN] Host API transport failure for {method.Method} {url}; retrying (attempt {retryCount + 1}/{MaxRetries}).");
                     retryCount++;
                     await Task.Delay(TimeSpan.FromSeconds(1 << retryCount));  // Exponential backoff
                     continue;
                 }
+
+                // Response received — server-returned status codes are not retried as transport failures.
+                if ((int)response.StatusCode >= 400)
+                {
+                    Console.WriteLine($"[WARN] Host API {method.Method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
+                }
+
+                // Handle rate limiting (429) with retry.
+                if ((int)response.StatusCode == 429)
+                {
+                    Console.WriteLine($"[INFO] Host API rate-limited {method.Method} {url}; applying retry policy.");
+                    if (retryCount < MaxRetries)
+                    {
+                        int waitSeconds = await GetRetryDelayAsync(response, retryCount);
+                        await Task.Delay(TimeSpan.FromSeconds(waitSeconds));
+                        retryCount++;
+                        continue;
+                    }
+                }
+
+                // All other error status codes (including 500) throw immediately.
+                response.EnsureSuccessStatusCode();
+                return;
             }
 
             throw new HttpRequestException("Max retries exceeded");

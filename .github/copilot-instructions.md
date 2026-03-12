@@ -15,9 +15,9 @@ This file records architecture and security decisions from the March 12, 2026 ru
 3. Disk usage gating exists via capability checks and host-side task assignment.
 4. Thread-safety improvements are required in task scheduling and shared state.
 5. AI task validation should be tightened without breaking template-driven host task generation.
-6. Re-registration failure behavior must differ by mode:
+6. Re-registration failure behavior should be consistent across modes:
 	 - Unattended: finish in-flight tasks, stop taking new tasks until registration succeeds, keep process alive.
-	 - Interactive: finish in-flight tasks, stop taking new tasks, show clear console guidance, then exit.
+	 - Interactive: finish in-flight tasks, stop taking new tasks until registration succeeds, keep process alive.
 7. Debug-only TLS relaxation risk is accepted for now.
 8. Plaintext local secret persistence risk is accepted for now.
 9. Windows service argument handling bug and related hardening are deferred.
@@ -72,7 +72,7 @@ Use an explicit registration health state (for example: `Healthy`, `Degraded`, `
 
 Mode-specific behavior:
 
-- Interactive mode: after draining active tasks and reporting status, exit process with actionable message.
+- Interactive mode: remain alive and continue retrying registration; provide clear console guidance while intake is blocked.
 - Unattended mode: remain alive and continue retrying registration.
 
 ### 5) HTTP Client Header Hygiene
