@@ -13,7 +13,7 @@ namespace hasheous_taskrunner.Classes.Communication
         private const string ErrorResultKey = "error";
 
         private static DateTime lastTaskFetch = DateTime.MinValue;
-        private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(1);
         private static readonly SemaphoreSlim taskCycleSemaphore = new SemaphoreSlim(1, 1);
         private static DateTime lastBlockedIntakeLog = DateTime.MinValue;
 

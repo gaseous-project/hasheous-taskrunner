@@ -114,15 +114,24 @@ namespace hasheous_taskrunner.Classes.Helpers
 
                     // Full redraw every 2 seconds to keep static borders intact
                     var now = DateTime.UtcNow;
-                    if (now - _lastFullRedraw >= TimeSpan.FromSeconds(2))
+                    if (OperatingSystem.IsWindows())
                     {
-                        // Re-enter alternate buffer and clear to avoid scrollback pollution
-                        _directOutput.Write("\x1b[?1049h\x1b[H\x1b[2J");
-                        _lastFullRedraw = now;
+                        // Windows console can get corrupted with rapid redraws, so we do a full clear less frequently
+                        _directOutput.Write("\x1b[H");
                     }
                     else
                     {
-                        _directOutput.Write("\x1b[H");
+                        // On Unix-based systems, we can do more frequent redraws without corruption, so we just move the cursor to the top. A full redraw is still done every 2 seconds to prevent any potential issues with very long-running sessions.
+                        if (now - _lastFullRedraw >= TimeSpan.FromSeconds(2))
+                        {
+                            // Re-enter alternate buffer and clear to avoid scrollback pollution
+                            _directOutput.Write("\x1b[?1049h\x1b[H\x1b[2J");
+                            _lastFullRedraw = now;
+                        }
+                        else
+                        {
+                            _directOutput.Write("\x1b[H");
+                        }
                     }
 
                     // Top border with title and status
