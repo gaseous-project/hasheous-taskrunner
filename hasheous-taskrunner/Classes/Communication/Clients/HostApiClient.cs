@@ -139,6 +139,8 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             int retryCount = 0;
             while (retryCount <= MaxRetries)
             {
+                EnsureAuthorizedHostUrl(url, method);
+
                 // Inject auth headers per-request
                 string authMode = InjectAuthHeaders();
 
@@ -191,6 +193,8 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             int retryCount = 0;
             while (retryCount <= MaxRetries)
             {
+                EnsureAuthorizedHostUrl(url, method);
+
                 // Inject auth headers per-request
                 string authMode = InjectAuthHeaders();
 
@@ -229,6 +233,32 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             }
 
             throw new HttpRequestException("Max retries exceeded");
+        }
+
+        private void EnsureAuthorizedHostUrl(string url, string method)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                throw new InvalidOperationException($"HostApiClient received an empty URL for {method} request.");
+            }
+
+            // Relative URLs are always resolved against configured host base URI.
+            if (Uri.TryCreate(url, UriKind.Relative, out _))
+            {
+                return;
+            }
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var absoluteUri))
+            {
+                throw new InvalidOperationException($"HostApiClient received an invalid URL for {method} request: {url}");
+            }
+
+            if (!_headerGuard.IsAuthorizedForSensitiveHeaders(absoluteUri.ToString()))
+            {
+                throw new InvalidOperationException(
+                    $"Blocked {method} request to non-host endpoint: {absoluteUri}. " +
+                    $"Configured host origin: {_baseUri}");
+            }
         }
 
         private string InjectAuthHeaders()
