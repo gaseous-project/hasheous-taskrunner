@@ -1,6 +1,6 @@
+using System.Collections.Concurrent;
 using hasheous_taskrunner.Classes.Tasks;
 using static hasheous_taskrunner.Classes.Helpers.StatusUpdate;
-using System.Collections.Concurrent;
 
 namespace hasheous_taskrunner.Classes.Communication
 {

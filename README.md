@@ -43,6 +43,7 @@ The task runner is configured through a hierarchical system (later values overri
 | `ClientName` | System hostname | No | Name to register with the server |
 | `ollama_url` | (empty) | No | URL of Ollama service for AI tasks |
 | `EnableAutoUpdate` | `true` | No | Enable automatic update checking and installation from GitHub releases |
+| `AllowInsecureUpdate` | `false` | No | Allow updates to proceed when checksum cannot be fetched or verification fails (not recommended) |
 | `TaskCount` | 1 | No | Run multiple tasks at once |
 | `notui` | `false` | No | If true, disables the text interface |
 
@@ -208,10 +209,17 @@ All GitHub releases include:
 
 The updater will:
 - Verify checksums before applying updates (when available)
-- Abort updates if checksums don't match
-- Warn if checksum files are missing
+- Block updates by default if checksum files are missing, cannot be fetched, or verification fails
 - Create backups before modifying files
 - Automatically rollback on failure
+
+To explicitly allow insecure updates (not recommended), set:
+
+```json
+{
+  "AllowInsecureUpdate": "true"
+}
+```
 
 ### Disabling Auto-Updates
 

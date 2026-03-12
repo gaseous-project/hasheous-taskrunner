@@ -163,6 +163,7 @@ namespace hasheous_taskrunner.Classes.Communication
         {
             string? tempFilePath = null;
             string? backupPath = null;
+            bool allowInsecureUpdate = IsInsecureUpdateAllowed();
 
             try
             {
@@ -205,17 +206,44 @@ namespace hasheous_taskrunner.Classes.Communication
                     {
                         var checksumContent = await httpClient.GetStringAsync(checksumAsset.BrowserDownloadUrl);
                         expectedChecksum = checksumContent.Split(' ', '\t', '\n', '\r')[0].Trim();
+
+                        if (string.IsNullOrWhiteSpace(expectedChecksum))
+                        {
+                            if (!allowInsecureUpdate)
+                            {
+                                Console.WriteLine("[ERROR] Checksum file was empty or invalid.");
+                                Console.WriteLine("[ERROR] Update blocked because AllowInsecureUpdate is disabled.");
+                                return;
+                            }
+
+                            Console.WriteLine("[WARNING] Checksum file was empty or invalid.");
+                            Console.WriteLine("[WARNING] AllowInsecureUpdate=true, proceeding without integrity verification.");
+                        }
                     }
                     catch (Exception ex)
                     {
+                        if (!allowInsecureUpdate)
+                        {
+                            Console.WriteLine($"[ERROR] Failed to download checksum file: {ex.Message}");
+                            Console.WriteLine("[ERROR] Update blocked because AllowInsecureUpdate is disabled.");
+                            return;
+                        }
+
                         Console.WriteLine($"[WARNING] Failed to download checksum file: {ex.Message}");
-                        Console.WriteLine("[WARNING] Proceeding without checksum verification (NOT RECOMMENDED).");
+                        Console.WriteLine("[WARNING] AllowInsecureUpdate=true, proceeding without checksum verification.");
                     }
                 }
                 else
                 {
+                    if (!allowInsecureUpdate)
+                    {
+                        Console.WriteLine("[ERROR] No checksum file found for this release.");
+                        Console.WriteLine("[ERROR] Update blocked because AllowInsecureUpdate is disabled.");
+                        return;
+                    }
+
                     Console.WriteLine("[WARNING] No checksum file found for this release.");
-                    Console.WriteLine("[WARNING] Cannot verify download integrity (NOT RECOMMENDED).");
+                    Console.WriteLine("[WARNING] AllowInsecureUpdate=true, proceeding without integrity verification.");
                 }
 
                 Console.WriteLine($"Downloading update from {asset.BrowserDownloadUrl}");
@@ -231,14 +259,25 @@ namespace hasheous_taskrunner.Classes.Communication
                     string actualChecksum = CalculateSHA256(tempFilePath);
                     if (!actualChecksum.Equals(expectedChecksum, StringComparison.OrdinalIgnoreCase))
                     {
-                        Console.WriteLine($"[ERROR] Checksum verification FAILED!");
-                        Console.WriteLine($"[ERROR] Expected: {expectedChecksum}");
-                        Console.WriteLine($"[ERROR] Actual:   {actualChecksum}");
-                        Console.WriteLine($"[ERROR] Update aborted for security reasons.");
-                        File.Delete(tempFilePath);
-                        return;
+                        if (!allowInsecureUpdate)
+                        {
+                            Console.WriteLine($"[ERROR] Checksum verification FAILED!");
+                            Console.WriteLine($"[ERROR] Expected: {expectedChecksum}");
+                            Console.WriteLine($"[ERROR] Actual:   {actualChecksum}");
+                            Console.WriteLine($"[ERROR] Update blocked because AllowInsecureUpdate is disabled.");
+                            File.Delete(tempFilePath);
+                            return;
+                        }
+
+                        Console.WriteLine($"[WARNING] Checksum verification FAILED!");
+                        Console.WriteLine($"[WARNING] Expected: {expectedChecksum}");
+                        Console.WriteLine($"[WARNING] Actual:   {actualChecksum}");
+                        Console.WriteLine("[WARNING] AllowInsecureUpdate=true, proceeding despite failed integrity verification.");
                     }
-                    Console.WriteLine("[INFO] Checksum verification PASSED.");
+                    else
+                    {
+                        Console.WriteLine("[INFO] Checksum verification PASSED.");
+                    }
                 }
 
                 // Get the current executable path
@@ -386,6 +425,18 @@ namespace hasheous_taskrunner.Classes.Communication
                 ? Config.Configuration["EnableAutoUpdate"]
                 : "true";
             return enableAutoUpdate.Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Checks if insecure updates are allowed when integrity verification is unavailable or fails.
+        /// </summary>
+        /// <returns>True if insecure updates are explicitly allowed, false otherwise.</returns>
+        private static bool IsInsecureUpdateAllowed()
+        {
+            string allowInsecureUpdate = Config.Configuration.ContainsKey("AllowInsecureUpdate")
+                ? Config.Configuration["AllowInsecureUpdate"]
+                : "false";
+            return allowInsecureUpdate.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
