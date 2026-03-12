@@ -42,6 +42,28 @@ public class HostApiClientRegressionTests
         Assert.False(hasDefaultWorker);
     }
 
+    [Fact]
+    public async Task AutoAuth_PrefersWorkerHeader_WhenBootstrapAndWorkerKeysExist()
+    {
+        using var server = new TestHttpServer(request =>
+        {
+            bool hasBootstrapHeader = request.Headers.AllKeys.Contains("X-API-Key");
+            bool hasWorkerHeader = request.Headers.AllKeys.Contains("X-TaskWorker-API-Key");
+            string body = $"{{\"sawBootstrap\":{hasBootstrapHeader.ToString().ToLowerInvariant()},\"sawWorker\":{hasWorkerHeader.ToString().ToLowerInvariant()}}}";
+            return (200, body);
+        });
+
+        var client = new HostApiClient(server.BaseUrl);
+        client.SetRegistrationInfo("client-1", "worker-key");
+        client.SetBootstrapApiKey("bootstrap-key");
+
+        var response = await client.GetAsync<Dictionary<string, bool>>("/api/v1/TaskWorker/health");
+
+        Assert.NotNull(response);
+        Assert.False(response!["sawBootstrap"]);
+        Assert.True(response["sawWorker"]);
+    }
+
     private static HttpClient GetInternalHttpClient(HostApiClient client)
     {
         FieldInfo? field = typeof(HostApiClient).GetField("_httpClient", BindingFlags.NonPublic | BindingFlags.Instance);

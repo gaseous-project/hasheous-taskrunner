@@ -8,10 +8,15 @@ public class RegistrationRegressionTests
     [Fact]
     public async Task Initialize_WithForceHostRegistration_TriggersHostCall_WhenAlreadyRegistered()
     {
+        bool sawBootstrapHeader = false;
+        bool sawWorkerHeader = false;
+
         using var server = new TestHttpServer(request =>
         {
             if (request.HttpMethod == "POST" && (request.RawUrl ?? string.Empty).StartsWith("/api/v1/TaskWorker/clients", StringComparison.OrdinalIgnoreCase))
             {
+                sawBootstrapHeader = request.Headers.AllKeys.Contains("X-API-Key");
+                sawWorkerHeader = request.Headers.AllKeys.Contains("X-TaskWorker-API-Key");
                 return (200, "{\"client_id\":\"client-2\",\"client_api_key\":\"worker-2\"}");
             }
 
@@ -35,6 +40,8 @@ public class RegistrationRegressionTests
         bool observedRequest = await server.WaitForRequestsAsync(1, TimeSpan.FromSeconds(2));
         Assert.True(observedRequest);
         Assert.Contains(server.Paths, path => path.StartsWith("/api/v1/TaskWorker/clients", StringComparison.OrdinalIgnoreCase));
+        Assert.True(sawBootstrapHeader);
+        Assert.False(sawWorkerHeader);
     }
 
     [Fact]

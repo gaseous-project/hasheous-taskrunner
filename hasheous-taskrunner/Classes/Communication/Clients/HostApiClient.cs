@@ -16,6 +16,13 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
     /// </summary>
     public class HostApiClient : IHostApiClient
     {
+        private enum AuthSelection
+        {
+            Auto,
+            ForceBootstrap,
+            ForceWorker
+        }
+
         private readonly HttpClient _httpClient;
         private readonly HeaderGuard _headerGuard;
         private readonly string _baseUri;
@@ -87,26 +94,36 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
         public async Task<T?> PostAsync<T>(string url, object content)
         {
             string serializedContent = JsonConvert.SerializeObject(content);
-            return await ExecuteWithRetryAsync<T>(HttpMethod.Post, url, serializedContent);
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Post, url, serializedContent, AuthSelection.Auto);
+        }
+
+        public async Task<T?> PostWithBootstrapAuthAsync<T>(string url, object content)
+        {
+            string serializedContent = JsonConvert.SerializeObject(content);
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Post, url, serializedContent, AuthSelection.ForceBootstrap);
         }
 
         public async Task<T?> PutAsync<T>(string url, object content)
         {
             string serializedContent = JsonConvert.SerializeObject(content);
-            return await ExecuteWithRetryAsync<T>(HttpMethod.Put, url, serializedContent);
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Put, url, serializedContent, AuthSelection.Auto);
         }
 
         public async Task<T?> GetAsync<T>(string url)
         {
-            return await ExecuteWithRetryAsync<T>(HttpMethod.Get, url);
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Get, url, authSelection: AuthSelection.Auto);
         }
 
         public async Task DeleteAsync(string url)
         {
-            await ExecuteWithRetryAsync(HttpMethod.Delete, url);
+            await ExecuteWithRetryAsync(HttpMethod.Delete, url, authSelection: AuthSelection.Auto);
         }
 
-        private async Task<T?> ExecuteWithRetryAsync<T>(HttpMethod method, string url, string? serializedContent = null)
+        private async Task<T?> ExecuteWithRetryAsync<T>(
+            HttpMethod method,
+            string url,
+            string? serializedContent = null,
+            AuthSelection authSelection = AuthSelection.Auto)
         {
             int retryCount = 0;
             while (retryCount <= MaxRetries)
@@ -119,7 +136,7 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
                 try
                 {
                     using var request = CreateRequest(method, url, serializedContent);
-                    authMode = ApplyAuthHeaders(request);
+                    authMode = ApplyAuthHeaders(request, authSelection);
                     response = await _httpClient.SendAsync(request);
                 }
                 catch (HttpRequestException) when (retryCount < MaxRetries)
@@ -163,7 +180,11 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             throw new HttpRequestException("Max retries exceeded");
         }
 
-        private async Task ExecuteWithRetryAsync(HttpMethod method, string url, string? serializedContent = null)
+        private async Task ExecuteWithRetryAsync(
+            HttpMethod method,
+            string url,
+            string? serializedContent = null,
+            AuthSelection authSelection = AuthSelection.Auto)
         {
             int retryCount = 0;
             while (retryCount <= MaxRetries)
@@ -176,7 +197,7 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
                 try
                 {
                     using var request = CreateRequest(method, url, serializedContent);
-                    authMode = ApplyAuthHeaders(request);
+                    authMode = ApplyAuthHeaders(request, authSelection);
                     response = await _httpClient.SendAsync(request);
                 }
                 catch (HttpRequestException) when (retryCount < MaxRetries)
@@ -252,29 +273,53 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             }
         }
 
-        private string ApplyAuthHeaders(HttpRequestMessage request)
+        private string ApplyAuthHeaders(HttpRequestMessage request, AuthSelection authSelection)
         {
             // Add auth header per-request to avoid shared-header races across concurrent requests.
+            if (authSelection == AuthSelection.ForceBootstrap)
+            {
+                if (string.IsNullOrEmpty(_bootstrapApiKey))
+                {
+                    throw new InvalidOperationException(
+                        "HostApiClient cannot inject bootstrap auth header: bootstrap API key is not set.");
+                }
+
+                request.Headers.Add("X-API-Key", _bootstrapApiKey);
+                return "bootstrap";
+            }
+
+            if (authSelection == AuthSelection.ForceWorker)
+            {
+                if (string.IsNullOrEmpty(_clientApiKey))
+                {
+                    throw new InvalidOperationException(
+                        "HostApiClient cannot inject worker auth header: client API key is not set.");
+                }
+
+                request.Headers.Add("X-TaskWorker-API-Key", _clientApiKey);
+                return "worker";
+            }
+
+            // Auto mode defaults to worker auth for runtime requests when both are present.
+            if (!string.IsNullOrEmpty(_clientApiKey))
+            {
+                request.Headers.Add("X-TaskWorker-API-Key", _clientApiKey);
+                return "worker";
+            }
+
             if (!string.IsNullOrEmpty(_bootstrapApiKey))
             {
                 request.Headers.Add("X-API-Key", _bootstrapApiKey);
                 return "bootstrap";
             }
-            else if (!string.IsNullOrEmpty(_clientApiKey))
-            {
-                request.Headers.Add("X-TaskWorker-API-Key", _clientApiKey);
-                return "worker";
-            }
-            else
-            {
-                // This indicates a logic error - requests should not be made without auth
-                throw new InvalidOperationException(
-                    "HostApiClient cannot inject auth headers: no bootstrap API key or registered client API key set. " +
-                    "This indicates registration was not completed successfully. " +
-                    "Bootstrap key: " + (_bootstrapApiKey ?? "<null>") + ", " +
-                    "Client API key: " + (_clientApiKey ?? "<null>") + ", " +
-                    "Client ID: " + (_clientId ?? "<null>"));
-            }
+
+            // This indicates a logic error - requests should not be made without auth
+            throw new InvalidOperationException(
+                "HostApiClient cannot inject auth headers: no bootstrap API key or registered client API key set. " +
+                "This indicates registration was not completed successfully. " +
+                "Bootstrap key: " + (_bootstrapApiKey ?? "<null>") + ", " +
+                "Client API key: " + (_clientApiKey ?? "<null>") + ", " +
+                "Client ID: " + (_clientId ?? "<null>"));
         }
 
         private async Task<int> GetRetryDelayAsync(HttpResponseMessage response, int retryCount)
