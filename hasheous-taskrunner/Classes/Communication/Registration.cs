@@ -4,6 +4,13 @@ using hasheous_taskrunner.Classes.Communication.Clients;
 
 namespace hasheous_taskrunner.Classes.Communication
 {
+    public enum RegistrationHealthState
+    {
+        Healthy,
+        Degraded,
+        BlockingNewTasks
+    }
+
     /// <summary>
     /// Provides registration utilities for the task runner communication subsystem.
     /// Add initialization and registration helpers here as needed.
@@ -13,15 +20,43 @@ namespace hasheous_taskrunner.Classes.Communication
         private static DateTime lastRegistrationTime = DateTime.MinValue;
         private static readonly TimeSpan registrationInterval = TimeSpan.FromMinutes(60);
         private static readonly Random retryRandom = new Random();
+        private static readonly object registrationStateLock = new object();
+        private static readonly SemaphoreSlim recoveryLoopSemaphore = new SemaphoreSlim(1, 1);
         private const int MaxRetries = 10;
+        private static RegistrationHealthState healthState = RegistrationHealthState.Degraded;
+        private static Task? recoveryTask;
+
+        /// <summary>
+        /// Current registration health state.
+        /// </summary>
+        public static RegistrationHealthState HealthState
+        {
+            get
+            {
+                lock (registrationStateLock)
+                {
+                    return healthState;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns true when new task intake should be blocked.
+        /// </summary>
+        public static bool ShouldBlockNewTasks => HealthState == RegistrationHealthState.BlockingNewTasks;
 
         /// <summary>
         /// Initializes registration-related resources; implement registration logic here.
         /// </summary>
         /// <param name="parameters">The parameters required for registration.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
-        public static async Task Initialize(Dictionary<string, object> parameters)
+        public static async Task Initialize(Dictionary<string, object> parameters, bool terminateOnExhaustedRetries = true)
         {
+            if (!ShouldBlockNewTasks)
+            {
+                SetHealthState(RegistrationHealthState.Degraded, "Initializing registration.");
+            }
+
             // attempt to register - keep trying until successful
             string registrationUrl = $"{Config.BaseUriPath}/clients?clientName={WebUtility.UrlEncode(Config.Configuration["ClientName"])}&clientVersion={WebUtility.UrlEncode(Config.ClientVersion.ToString())}";
             Console.WriteLine("Registering task worker with host...");
@@ -78,14 +113,26 @@ namespace hasheous_taskrunner.Classes.Communication
                             await UpdateRegistrationInfo();
                         }
                     }
+
+                    SetHealthState(RegistrationHealthState.Healthy, "Registration completed successfully.");
+                    lastRegistrationTime = DateTime.UtcNow;
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[ERROR] Registration failed: {ex.Message}");
+                    if (!ShouldBlockNewTasks)
+                    {
+                        SetHealthState(RegistrationHealthState.Degraded, "Registration attempt failed.");
+                    }
                     if (retryCount >= MaxRetries)
                     {
-                        Console.WriteLine($"[ERROR] Maximum retry attempts ({MaxRetries}) reached. Aborting.");
-                        Environment.Exit(1);
+                        if (terminateOnExhaustedRetries)
+                        {
+                            Console.WriteLine($"[ERROR] Maximum retry attempts ({MaxRetries}) reached. Aborting.");
+                            Environment.Exit(1);
+                        }
+
+                        throw new InvalidOperationException($"Maximum retry attempts ({MaxRetries}) reached.", ex);
                     }
 
                     // Exponential backoff with jitter: 1s → 2s → 4s → 8s → 16s → 32s → max 60s
@@ -150,11 +197,102 @@ namespace hasheous_taskrunner.Classes.Communication
         /// </summary>
         public async static Task ReRegisterIfDue()
         {
+            if (ShouldBlockNewTasks)
+            {
+                EnsureRecoveryLoop();
+                return;
+            }
+
             if (DateTime.UtcNow - lastRegistrationTime >= registrationInterval)
             {
                 Console.WriteLine("Re-registering task worker with host...");
-                await Initialize(Config.RegistrationParameters);
-                lastRegistrationTime = DateTime.UtcNow;
+                try
+                {
+                    await Initialize(Config.RegistrationParameters, terminateOnExhaustedRetries: false);
+                    SetHealthState(RegistrationHealthState.Healthy, "Re-registration successful.");
+                    lastRegistrationTime = DateTime.UtcNow;
+                }
+                catch (Exception ex)
+                {
+                    HandleRegistrationFailure(ex.Message);
+                }
+            }
+        }
+
+        private static void HandleRegistrationFailure(string reason)
+        {
+            SetHealthState(RegistrationHealthState.BlockingNewTasks, $"Registration health degraded: {reason}");
+            EnsureRecoveryLoop();
+        }
+
+        private static void EnsureRecoveryLoop()
+        {
+            lock (registrationStateLock)
+            {
+                if (recoveryTask != null && !recoveryTask.IsCompleted)
+                {
+                    return;
+                }
+
+                recoveryTask = Task.Run(RecoveryLoopAsync);
+            }
+        }
+
+        private static async Task RecoveryLoopAsync()
+        {
+            if (!await recoveryLoopSemaphore.WaitAsync(0))
+            {
+                return;
+            }
+
+            try
+            {
+                int attempt = 0;
+                while (ShouldBlockNewTasks)
+                {
+                    attempt++;
+                    Console.WriteLine($"[INFO] Registration recovery attempt {attempt} started.");
+
+                    try
+                    {
+                        await Initialize(Config.RegistrationParameters, terminateOnExhaustedRetries: false);
+                        if (Common.IsRegistered())
+                        {
+                            SetHealthState(RegistrationHealthState.Healthy, "Registration recovered; resuming new task intake.");
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERROR] Registration recovery attempt {attempt} failed: {ex.Message}");
+                    }
+
+                    int baseDelayMs = 1000;
+                    int maxDelayMs = 60000;
+                    int exponentialDelay = baseDelayMs * (int)Math.Pow(2, Math.Min(attempt - 1, 5));
+                    int jitter = retryRandom.Next(0, 1000);
+                    int delayMs = Math.Min(exponentialDelay, maxDelayMs) + jitter;
+                    Console.WriteLine($"[INFO] Registration recovery retrying in {delayMs}ms.");
+                    await Task.Delay(delayMs);
+                }
+            }
+            finally
+            {
+                recoveryLoopSemaphore.Release();
+            }
+        }
+
+        private static void SetHealthState(RegistrationHealthState newState, string reason)
+        {
+            lock (registrationStateLock)
+            {
+                if (healthState == newState)
+                {
+                    return;
+                }
+
+                Console.WriteLine($"[INFO] Registration state transition: {healthState} -> {newState}. {reason}");
+                healthState = newState;
             }
         }
     }

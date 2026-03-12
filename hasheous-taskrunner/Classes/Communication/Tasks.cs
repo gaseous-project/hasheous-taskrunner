@@ -15,6 +15,7 @@ namespace hasheous_taskrunner.Classes.Communication
         private static DateTime lastTaskFetch = DateTime.MinValue;
         private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(2);
         private static readonly SemaphoreSlim taskCycleSemaphore = new SemaphoreSlim(1, 1);
+        private static DateTime lastBlockedIntakeLog = DateTime.MinValue;
 
         private static readonly ConcurrentDictionary<long, TaskExecutor> activeTaskExecutors = new ConcurrentDictionary<long, TaskExecutor>();
 
@@ -226,6 +227,19 @@ namespace hasheous_taskrunner.Classes.Communication
                 // Fetch tasks from the server only if we have capacity to run them
                 if (activeTaskExecutors.Count >= MaxConcurrentTasks)
                 {
+                    lastTaskFetch = DateTime.UtcNow;
+                    return;
+                }
+
+                // Registration health gate: continue progressing active tasks, but block new intake.
+                if (Registration.ShouldBlockNewTasks)
+                {
+                    if (DateTime.UtcNow - lastBlockedIntakeLog > TimeSpan.FromSeconds(30))
+                    {
+                        Console.WriteLine("[INFO] New task intake is currently blocked due to registration health state.");
+                        lastBlockedIntakeLog = DateTime.UtcNow;
+                    }
+
                     lastTaskFetch = DateTime.UtcNow;
                     return;
                 }
