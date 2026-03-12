@@ -18,7 +18,7 @@ namespace hasheous_taskrunner.Classes.Communication
     public static class Registration
     {
         private static DateTime lastRegistrationTime = DateTime.MinValue;
-        private static readonly TimeSpan registrationInterval = TimeSpan.FromMinutes(60);
+        private static readonly TimeSpan registrationInterval = TimeSpan.FromMinutes(30);
         private static readonly Random retryRandom = new Random();
         private static readonly object registrationStateLock = new object();
         private static readonly SemaphoreSlim recoveryLoopSemaphore = new SemaphoreSlim(1, 1);
@@ -75,13 +75,9 @@ namespace hasheous_taskrunner.Classes.Communication
                 }
             }
 
-            // Set bootstrap API key only during initial registration flow.
-            // If already registered, keep runtime auth on worker API key.
-            if (!Common.IsRegistered())
-            {
-                string apiKey = Config.Configuration["APIKey"];
-                Common.HostApiClientInstance.SetBootstrapApiKey(apiKey);
-            }
+            // All registration calls (initial and re-registration) must use bootstrap auth.
+            string apiKey = Config.Configuration["APIKey"];
+            Common.HostApiClientInstance.SetBootstrapApiKey(apiKey);
 
             // start registration loop
             int retryCount = 0;
@@ -95,7 +91,7 @@ namespace hasheous_taskrunner.Classes.Communication
                 try
                 {
                     retryCount++;
-                    Dictionary<string, string>? registrationInfo = await Common.HostApiClientInstance.PostAsync<Dictionary<string, string>>(registrationUrl, parameters);
+                    Dictionary<string, string>? registrationInfo = await Common.HostApiClientInstance.PostWithBootstrapAuthAsync<Dictionary<string, string>>(registrationUrl, parameters);
                     if (registrationInfo == null)
                     {
                         throw new InvalidOperationException("Registration response was null.");
