@@ -152,25 +152,22 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
                 Console.WriteLine($"[ERROR] Update check failed: {ex.Message}");
             }
 
-            // Fetch and execute tasks if due
-            if (!hasheous_taskrunner.Classes.Communication.Tasks.IsRunningTask)
+            // Fetch and execute tasks if due (internally guarded to prevent overlapping cycles)
+            _ = Task.Run(async () =>
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        await hasheous_taskrunner.Classes.Communication.Tasks.FetchAndExecuteTasksIfDue(cts.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        Console.WriteLine("[INFO] Task execution was cancelled.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[ERROR] Error in background task: {ex.Message}");
-                    }
-                });
-            }
+                    await hasheous_taskrunner.Classes.Communication.Tasks.FetchAndExecuteTasksIfDue(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine("[INFO] Task execution was cancelled.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Error in background task: {ex.Message}");
+                }
+            });
 
             try
             {

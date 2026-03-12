@@ -128,6 +128,8 @@ namespace hasheous_taskrunner.Classes.Helpers
                     // Top border with title and status
                     DrawTopBorder(width);
 
+                    var activeTaskSnapshot = Communication.Tasks.GetActiveTaskExecutorsSnapshot();
+
                     // Handle tiny terminal heights without scrolling
                     if (height < 8)
                     {
@@ -140,12 +142,12 @@ namespace hasheous_taskrunner.Classes.Helpers
                                 DrawEmptyLine(width, "Window too small");
                             }
                         }
-                        DrawBottomBorder(width);
+                        DrawBottomBorder(width, activeTaskSnapshot);
                         _directOutput.Flush();
                         return;
                     }
 
-                    int activeTaskCount = Communication.Tasks.ActiveTaskExecutors.Count;
+                    int activeTaskCount = activeTaskSnapshot.Count;
                     int availableWithConsole = height - 3; // top + separator + bottom
                     int availableNoConsole = height - 2; // top + bottom
                     int maxLogsPerTask = 2;
@@ -178,7 +180,7 @@ namespace hasheous_taskrunner.Classes.Helpers
                     }
 
                     // Task list pane
-                    DrawTaskPane(width, taskPaneHeight, maxLogsPerTask);
+                    DrawTaskPane(width, taskPaneHeight, maxLogsPerTask, activeTaskSnapshot);
 
                     if (showConsoleLog)
                     {
@@ -190,7 +192,7 @@ namespace hasheous_taskrunner.Classes.Helpers
                     }
 
                     // Bottom border with task count and capabilities
-                    DrawBottomBorder(width);
+                    DrawBottomBorder(width, activeTaskSnapshot);
 
                     _directOutput.Flush();
                 }
@@ -236,12 +238,10 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.WriteLine("╗\x1b[0m");
         }
 
-        private static void DrawBottomBorder(int width)
+        private static void DrawBottomBorder(int width, IReadOnlyDictionary<long, TaskExecutor> activeTasks)
         {
             if (_directOutput == null) return;
 
-            // Get task count
-            var activeTasks = Communication.Tasks.ActiveTaskExecutors;
             string leftInfo = $" Tasks: {activeTasks.Count}/{Communication.Tasks.MaxConcurrentTasks} ";
 
             // Get capabilities
@@ -275,12 +275,12 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.Write("╝\x1b[0m");
         }
 
-        private static void DrawTaskPane(int width, int paneHeight, int maxLogsPerTask)
+        private static void DrawTaskPane(int width, int paneHeight, int maxLogsPerTask, IReadOnlyDictionary<long, TaskExecutor> activeTaskSnapshot)
         {
             if (_directOutput == null) return;
 
             int currentLine = 0;
-            var activeTasks = Communication.Tasks.ActiveTaskExecutors
+            var activeTasks = activeTaskSnapshot
                 .OrderBy(kvp => kvp.Key)
                 .ToList();
 

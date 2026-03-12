@@ -1,5 +1,6 @@
 using hasheous_taskrunner.Classes.Tasks;
 using static hasheous_taskrunner.Classes.Helpers.StatusUpdate;
+using System.Collections.Concurrent;
 
 namespace hasheous_taskrunner.Classes.Communication
 {
@@ -13,13 +14,22 @@ namespace hasheous_taskrunner.Classes.Communication
 
         private static DateTime lastTaskFetch = DateTime.MinValue;
         private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(2);
+        private static readonly SemaphoreSlim taskCycleSemaphore = new SemaphoreSlim(1, 1);
 
-        private static Dictionary<long, TaskExecutor> activeTaskExecutors = new Dictionary<long, TaskExecutor>();
+        private static readonly ConcurrentDictionary<long, TaskExecutor> activeTaskExecutors = new ConcurrentDictionary<long, TaskExecutor>();
 
         /// <summary>
         /// Gets the collection of active task executors.
         /// </summary>
         public static IReadOnlyDictionary<long, TaskExecutor> ActiveTaskExecutors => activeTaskExecutors;
+
+        /// <summary>
+        /// Gets a snapshot of active task executors for thread-safe UI rendering.
+        /// </summary>
+        public static IReadOnlyDictionary<long, TaskExecutor> GetActiveTaskExecutorsSnapshot()
+        {
+            return new Dictionary<long, TaskExecutor>(activeTaskExecutors);
+        }
 
         /// <summary>
         /// Gets or sets the maximum number of concurrent task runners allowed. Default is set to 1, meaning only one task will be executed at a time. This property can be adjusted to allow for more concurrent tasks based on the capabilities of the host machine and the requirements of the tasks being executed.
@@ -46,21 +56,25 @@ namespace hasheous_taskrunner.Classes.Communication
         private static int _MaxConcurrentTasks = 1;
 
         /// <summary>
-        /// Indicates whether a task is currently being executed.
-        /// </summary>
-        public static bool IsRunningTask { get; set; } = false;
-
-        /// <summary>
         /// Fetches and executes tasks from the configured host if the fetch interval has elapsed.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
         public static async Task FetchAndExecuteTasksIfDue(CancellationToken cancellationToken = default)
         {
-            if (DateTime.UtcNow - lastTaskFetch >= taskFetchInterval)
+            if (!await taskCycleSemaphore.WaitAsync(0, cancellationToken))
             {
+                return;
+            }
+
+            try
+            {
+                if (DateTime.UtcNow - lastTaskFetch < taskFetchInterval)
+                {
+                    return;
+                }
+
                 cancellationToken.ThrowIfCancellationRequested();
-                IsRunningTask = true;
 
                 // progress existing tasks before fetching new ones
                 foreach (var executor in activeTaskExecutors.Values)
@@ -203,14 +217,15 @@ namespace hasheous_taskrunner.Classes.Communication
 
                 foreach (var jobId in completedJobIds)
                 {
-                    activeTaskExecutors.Remove(jobId);
-                    Console.WriteLine($"Task {jobId} completed and removed from active runners.");
+                    if (activeTaskExecutors.TryRemove(jobId, out _))
+                    {
+                        Console.WriteLine($"Task {jobId} completed and removed from active runners.");
+                    }
                 }
 
                 // Fetch tasks from the server only if we have capacity to run them
                 if (activeTaskExecutors.Count >= MaxConcurrentTasks)
                 {
-                    IsRunningTask = false;
                     lastTaskFetch = DateTime.UtcNow;
                     return;
                 }
@@ -240,8 +255,10 @@ namespace hasheous_taskrunner.Classes.Communication
 
                             // Create a new TaskExecutor for the job and add it to the active executors
                             var executor = new TaskExecutor(job);
-                            activeTaskExecutors[job.Id] = executor;
-                            Console.WriteLine($"Added task ID {job.Id} to active executors. Total active tasks: {activeTaskExecutors.Count}");
+                            if (activeTaskExecutors.TryAdd(job.Id, executor))
+                            {
+                                Console.WriteLine($"Added task ID {job.Id} to active executors. Total active tasks: {activeTaskExecutors.Count}");
+                            }
                         }
                     }
                 }
@@ -249,9 +266,13 @@ namespace hasheous_taskrunner.Classes.Communication
                 {
                     Console.WriteLine($"Failed to fetch tasks: {ex.Message}");
                 }
+
                 lastTaskFetch = DateTime.UtcNow;
-                IsRunningTask = false;
                 Console.WriteLine($"Task processing cycle complete. Active tasks: {activeTaskExecutors.Count}. Waiting for next interval.");
+            }
+            finally
+            {
+                taskCycleSemaphore.Release();
             }
         }
     }
