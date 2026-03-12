@@ -217,7 +217,12 @@ namespace hasheous_taskrunner.Classes.Helpers
 
             // Date, time, and CPU
             UpdateCpuUsage();
-            string rightInfo = $" {DateTime.Now:yyyy-MM-dd HH:mm:ss} | CPU: {_cpuUsage:F1}% ";
+            string[] rightInfoParts = new string[]
+            {
+                // $"CPU: {_cpuUsage:F1}%",
+                $"{DateTime.Now:yyyy-MM-dd HH:mm}"
+            };
+            string rightInfo = $" {string.Join(" | ", rightInfoParts)} ";
 
             // Calculate padding
             int padding = width - title.Length - rightInfo.Length - 2;
@@ -443,6 +448,10 @@ namespace hasheous_taskrunner.Classes.Helpers
                 Tasks.QueueItemStatus.Completed => "\x1b[32m",    // Green
                 Tasks.QueueItemStatus.Failed => "\x1b[31m",       // Red
                 Tasks.QueueItemStatus.Cancelled => "\x1b[90m",    // Gray
+                Tasks.QueueItemStatus.CommsFailure => "\x1b[31m", // Red
+                Tasks.QueueItemStatus.VerificationFailure => "\x1b[31m", // Red
+                Tasks.QueueItemStatus.WaitingForSubmission => "\x1b[33m", // Yellow
+                Tasks.QueueItemStatus.WaitingToStart => "\x1b[33m", // Yellow
                 _ => "\x1b[37m"                                   // White fallback
             };
 

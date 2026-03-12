@@ -12,7 +12,7 @@ namespace hasheous_taskrunner.Classes.Communication
         private const string ErrorResultKey = "error";
 
         private static DateTime lastTaskFetch = DateTime.MinValue;
-        private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan taskFetchInterval = TimeSpan.FromSeconds(2);
 
         private static Dictionary<long, TaskExecutor> activeTaskExecutors = new Dictionary<long, TaskExecutor>();
 
@@ -61,18 +61,6 @@ namespace hasheous_taskrunner.Classes.Communication
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 IsRunningTask = true;
-
-                // First, clean up completed tasks to free up slots
-                var completedJobIds = activeTaskExecutors
-                    .Where(kvp => kvp.Value.job.Status == QueueItemStatus.Submitted || kvp.Value.job.Status == QueueItemStatus.Cancelled || kvp.Value.job.Status == QueueItemStatus.Failed || kvp.Value.job.Status == QueueItemStatus.VerificationFailure)
-                    .Select(kvp => kvp.Key)
-                    .ToList();
-
-                foreach (var jobId in completedJobIds)
-                {
-                    activeTaskExecutors.Remove(jobId);
-                    Console.WriteLine($"Task {jobId} completed and removed from active runners.");
-                }
 
                 // progress existing tasks before fetching new ones
                 foreach (var executor in activeTaskExecutors.Values)
@@ -158,7 +146,8 @@ namespace hasheous_taskrunner.Classes.Communication
                             ResponsePayload submissionPayload = ResponsePayload.Create(
                                 QueueItemStatus.Submitted,
                                 result: executor.ExecutionResult.ContainsKey(ResponseResultKey) ? executor.ExecutionResult[ResponseResultKey] : null,
-                                errorMessage: executor.ExecutionResult.ContainsKey(ErrorResultKey) ? executor.ExecutionResult[ErrorResultKey] : null);
+                                errorMessage: executor.ExecutionResult.ContainsKey(ErrorResultKey) ? executor.ExecutionResult[ErrorResultKey] : null,
+                                taskId: executor.job.Id);
 
                             try
                             {
@@ -181,7 +170,8 @@ namespace hasheous_taskrunner.Classes.Communication
 
                             ResponsePayload failurePayload = ResponsePayload.Create(
                                 QueueItemStatus.Failed,
-                                errorMessage: executor.ExecutionResult.ContainsKey(ErrorResultKey) ? executor.ExecutionResult[ErrorResultKey] : null);
+                                errorMessage: executor.ExecutionResult.ContainsKey(ErrorResultKey) ? executor.ExecutionResult[ErrorResultKey] : null,
+                                taskId: executor.job.Id);
 
                             try
                             {
@@ -194,6 +184,10 @@ namespace hasheous_taskrunner.Classes.Communication
                             }
                             break;
 
+                        case QueueItemStatus.InProgress:
+                            // task is currently in progress, so we just wait for it to complete
+                            break;
+
                         default:
                             Console.WriteLine($"Task {executor.job.Id} is in an unknown status: {executor.job.Status}");
                             executor.job.Status = QueueItemStatus.Failed;
@@ -201,8 +195,17 @@ namespace hasheous_taskrunner.Classes.Communication
                     }
                 }
 
-                // report current status before fetching new tasks
-                Console.WriteLine($"Checking for new tasks... Active tasks: {activeTaskExecutors.Count}/{MaxConcurrentTasks}");
+                // clean up completed tasks to free up slots
+                var completedJobIds = activeTaskExecutors
+                    .Where(kvp => kvp.Value.job.Status == QueueItemStatus.Submitted || kvp.Value.job.Status == QueueItemStatus.Cancelled || kvp.Value.job.Status == QueueItemStatus.Failed || kvp.Value.job.Status == QueueItemStatus.VerificationFailure)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var jobId in completedJobIds)
+                {
+                    activeTaskExecutors.Remove(jobId);
+                    Console.WriteLine($"Task {jobId} completed and removed from active runners.");
+                }
 
                 // Fetch tasks from the server only if we have capacity to run them
                 if (activeTaskExecutors.Count >= MaxConcurrentTasks)
