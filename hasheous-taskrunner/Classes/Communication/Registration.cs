@@ -1,5 +1,6 @@
 using System.Net;
 using hasheous_taskrunner.Classes;
+using hasheous_taskrunner.Classes.Communication.Clients;
 
 namespace hasheous_taskrunner.Classes.Communication
 {
@@ -33,10 +34,14 @@ namespace hasheous_taskrunner.Classes.Communication
                     parameters.Add("client_id", Config.GetAuthValue("client_id"));
                 }
             }
-            TaskRunner.Classes.HttpHelper.BaseUri = Config.Configuration["HostAddress"];
 
-            string apiKey = Config.Configuration["APIKey"];
-            TaskRunner.Classes.HttpHelper.SetHeader("X-API-Key", apiKey);
+            // Set bootstrap API key only during initial registration flow.
+            // If already registered, keep runtime auth on worker API key.
+            if (!Common.IsRegistered())
+            {
+                string apiKey = Config.Configuration["APIKey"];
+                Common.HostApiClientInstance.SetBootstrapApiKey(apiKey);
+            }
 
             // start registration loop
             int retryCount = 0;
@@ -50,7 +55,7 @@ namespace hasheous_taskrunner.Classes.Communication
                 try
                 {
                     retryCount++;
-                    Dictionary<string, string>? registrationInfo = await TaskRunner.Classes.HttpHelper.Post<Dictionary<string, string>>(registrationUrl, parameters);
+                    Dictionary<string, string>? registrationInfo = await Common.HostApiClientInstance.PostAsync<Dictionary<string, string>>(registrationUrl, parameters);
                     if (registrationInfo == null)
                     {
                         throw new InvalidOperationException("Registration response was null.");
@@ -60,9 +65,6 @@ namespace hasheous_taskrunner.Classes.Communication
                     Console.WriteLine("Registration completed, setting registration info...");
                     Console.WriteLine("Client ID: " + registrationInfo["client_id"]);
                     Common.SetRegistrationInfo(registrationInfo);
-
-                    // remmove API key header after registration
-                    TaskRunner.Classes.HttpHelper.RemoveHeader("X-API-Key");
 
                     // checking registration requirements
                     if (registrationInfo.ContainsKey("required_capabilities"))
