@@ -49,8 +49,13 @@ namespace hasheous_taskrunner.Classes.Communication
         /// Initializes registration-related resources; implement registration logic here.
         /// </summary>
         /// <param name="parameters">The parameters required for registration.</param>
+        /// <param name="terminateOnExhaustedRetries">If true, exits the process after max retries are exhausted.</param>
+        /// <param name="forceHostRegistration">If true, performs a host registration call even when local auth state is already registered.</param>
         /// <returns>A task representing the asynchronous operation.</returns>
-        public static async Task Initialize(Dictionary<string, object> parameters, bool terminateOnExhaustedRetries = true)
+        public static async Task Initialize(
+            Dictionary<string, object> parameters,
+            bool terminateOnExhaustedRetries = true,
+            bool forceHostRegistration = false)
         {
             if (!ShouldBlockNewTasks)
             {
@@ -82,7 +87,7 @@ namespace hasheous_taskrunner.Classes.Communication
             int retryCount = 0;
             while (true)
             {
-                if (Common.IsRegistered())
+                if (Common.IsRegistered() && !forceHostRegistration)
                 {
                     break;
                 }
@@ -116,6 +121,7 @@ namespace hasheous_taskrunner.Classes.Communication
 
                     SetHealthState(RegistrationHealthState.Healthy, "Registration completed successfully.");
                     lastRegistrationTime = DateTime.UtcNow;
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -208,7 +214,10 @@ namespace hasheous_taskrunner.Classes.Communication
                 Console.WriteLine("Re-registering task worker with host...");
                 try
                 {
-                    await Initialize(Config.RegistrationParameters, terminateOnExhaustedRetries: false);
+                    await Initialize(
+                        Config.RegistrationParameters,
+                        terminateOnExhaustedRetries: false,
+                        forceHostRegistration: true);
                     SetHealthState(RegistrationHealthState.Healthy, "Re-registration successful.");
                     lastRegistrationTime = DateTime.UtcNow;
                 }
@@ -255,7 +264,10 @@ namespace hasheous_taskrunner.Classes.Communication
 
                     try
                     {
-                        await Initialize(Config.RegistrationParameters, terminateOnExhaustedRetries: false);
+                        await Initialize(
+                            Config.RegistrationParameters,
+                            terminateOnExhaustedRetries: false,
+                            forceHostRegistration: true);
                         if (Common.IsRegistered())
                         {
                             SetHealthState(RegistrationHealthState.Healthy, "Registration recovered; resuming new task intake.");

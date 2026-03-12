@@ -259,6 +259,35 @@ Once started, the task runner:
 
 ### Graceful Shutdown
 
+## Manual Verification Checklist
+
+Use this checklist before production rollout, especially when registration health is unstable.
+
+### Interactive Mode (UserInteractive=true)
+
+- Start the runner with valid config and confirm normal intake/execution.
+- Simulate registration failure (invalid host/API key or network outage).
+- Confirm logs show registration health degraded and new task intake blocked.
+- Confirm in-flight tasks continue to completion/submission while blocked.
+- Confirm process exits only after in-flight tasks are drained.
+- Confirm exit guidance is printed with actionable recovery steps.
+
+### Unattended Mode (service/container)
+
+- Start in unattended context (Windows service or container).
+- Simulate registration failure.
+- Confirm logs show blocked intake and recovery attempts with backoff.
+- Confirm process remains alive while recovery loop runs.
+- Restore connectivity/auth and confirm state returns to healthy.
+- Confirm new task intake resumes automatically after recovery.
+
+### HTTP Boundary and Auth Hygiene
+
+- Verify host API calls include either `X-API-Key` (bootstrap) or `X-TaskWorker-API-Key` (worker) as appropriate.
+- Verify non-host absolute URLs are rejected by host client paths.
+- Verify host auth headers are not sent to Ollama/external endpoints.
+
+
 Press `Ctrl+C` to gracefully shut down. The runner will:
 - Stop accepting new tasks
 - Clean up any running processes

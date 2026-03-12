@@ -86,77 +86,48 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
 
         public async Task<T?> PostAsync<T>(string url, object content)
         {
-            var stringContent = new StringContent(
-                JsonConvert.SerializeObject(content),
-                Encoding.UTF8,
-                "application/json"
-            );
-            await stringContent.LoadIntoBufferAsync();
-
-            return await ExecuteWithRetryAsync<T>(
-                "POST",
-                url,
-                async () => await _httpClient.PostAsync(url, stringContent)
-            );
+            string serializedContent = JsonConvert.SerializeObject(content);
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Post, url, serializedContent);
         }
 
         public async Task<T?> PutAsync<T>(string url, object content)
         {
-            var stringContent = new StringContent(
-                JsonConvert.SerializeObject(content),
-                Encoding.UTF8,
-                "application/json"
-            );
-            await stringContent.LoadIntoBufferAsync();
-
-            return await ExecuteWithRetryAsync<T>(
-                "PUT",
-                url,
-                async () => await _httpClient.PutAsync(url, stringContent)
-            );
+            string serializedContent = JsonConvert.SerializeObject(content);
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Put, url, serializedContent);
         }
 
         public async Task<T?> GetAsync<T>(string url)
         {
-            return await ExecuteWithRetryAsync<T>(
-                "GET",
-                url,
-                async () => await _httpClient.GetAsync(url)
-            );
+            return await ExecuteWithRetryAsync<T>(HttpMethod.Get, url);
         }
 
         public async Task DeleteAsync(string url)
         {
-            await ExecuteWithRetryAsync(
-                "DELETE",
-                url,
-                async () => await _httpClient.DeleteAsync(url)
-            );
+            await ExecuteWithRetryAsync(HttpMethod.Delete, url);
         }
 
-        private async Task<T?> ExecuteWithRetryAsync<T>(string method, string url, Func<Task<HttpResponseMessage>> requestFunc)
+        private async Task<T?> ExecuteWithRetryAsync<T>(HttpMethod method, string url, string? serializedContent = null)
         {
             int retryCount = 0;
             while (retryCount <= MaxRetries)
             {
-                EnsureAuthorizedHostUrl(url, method);
-
-                // Inject auth headers per-request
-                string authMode = InjectAuthHeaders();
+                EnsureAuthorizedHostUrl(url, method.Method);
 
                 try
                 {
-                    var response = await requestFunc();
+                    using var request = CreateRequest(method, url, serializedContent);
+                    string authMode = ApplyAuthHeaders(request);
+                    var response = await _httpClient.SendAsync(request);
 
                     if ((int)response.StatusCode >= 400)
                     {
-                        Console.WriteLine($"[WARN] Host API {method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
+                        Console.WriteLine($"[WARN] Host API {method.Method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
                     }
 
                     // Handle rate limiting
                     if ((int)response.StatusCode == 429)
                     {
-                        Console.WriteLine($"[INFO] Host API rate-limited {method} {url}; applying retry policy.");
+                        Console.WriteLine($"[INFO] Host API rate-limited {method.Method} {url}; applying retry policy.");
                         if (retryCount < MaxRetries)
                         {
                             int waitSeconds = await GetRetryDelayAsync(response, retryCount);
@@ -178,7 +149,7 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
                 }
                 catch (HttpRequestException) when (retryCount < MaxRetries)
                 {
-                    Console.WriteLine($"[WARN] Host API transport failure for {method} {url}; retrying (attempt {retryCount + 1}/{MaxRetries}).");
+                    Console.WriteLine($"[WARN] Host API transport failure for {method.Method} {url}; retrying (attempt {retryCount + 1}/{MaxRetries}).");
                     retryCount++;
                     await Task.Delay(TimeSpan.FromSeconds(1 << retryCount));  // Exponential backoff
                     continue;
@@ -188,29 +159,28 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             throw new HttpRequestException("Max retries exceeded");
         }
 
-        private async Task ExecuteWithRetryAsync(string method, string url, Func<Task<HttpResponseMessage>> requestFunc)
+        private async Task ExecuteWithRetryAsync(HttpMethod method, string url, string? serializedContent = null)
         {
             int retryCount = 0;
             while (retryCount <= MaxRetries)
             {
-                EnsureAuthorizedHostUrl(url, method);
-
-                // Inject auth headers per-request
-                string authMode = InjectAuthHeaders();
+                EnsureAuthorizedHostUrl(url, method.Method);
 
                 try
                 {
-                    var response = await requestFunc();
+                    using var request = CreateRequest(method, url, serializedContent);
+                    string authMode = ApplyAuthHeaders(request);
+                    var response = await _httpClient.SendAsync(request);
 
                     if ((int)response.StatusCode >= 400)
                     {
-                        Console.WriteLine($"[WARN] Host API {method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
+                        Console.WriteLine($"[WARN] Host API {method.Method} {url} returned {(int)response.StatusCode} ({response.StatusCode}) using auth mode '{authMode}' (retry {retryCount}/{MaxRetries}).");
                     }
 
                     // Handle rate limiting
                     if ((int)response.StatusCode == 429)
                     {
-                        Console.WriteLine($"[INFO] Host API rate-limited {method} {url}; applying retry policy.");
+                        Console.WriteLine($"[INFO] Host API rate-limited {method.Method} {url}; applying retry policy.");
                         if (retryCount < MaxRetries)
                         {
                             int waitSeconds = await GetRetryDelayAsync(response, retryCount);
@@ -225,7 +195,7 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
                 }
                 catch (HttpRequestException) when (retryCount < MaxRetries)
                 {
-                    Console.WriteLine($"[WARN] Host API transport failure for {method} {url}; retrying (attempt {retryCount + 1}/{MaxRetries}).");
+                    Console.WriteLine($"[WARN] Host API transport failure for {method.Method} {url}; retrying (attempt {retryCount + 1}/{MaxRetries}).");
                     retryCount++;
                     await Task.Delay(TimeSpan.FromSeconds(1 << retryCount));  // Exponential backoff
                     continue;
@@ -233,6 +203,17 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             }
 
             throw new HttpRequestException("Max retries exceeded");
+        }
+
+        private HttpRequestMessage CreateRequest(HttpMethod method, string url, string? serializedContent)
+        {
+            var request = new HttpRequestMessage(method, url);
+            if (serializedContent != null)
+            {
+                request.Content = new StringContent(serializedContent, Encoding.UTF8, "application/json");
+            }
+
+            return request;
         }
 
         private void EnsureAuthorizedHostUrl(string url, string method)
@@ -261,21 +242,17 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             }
         }
 
-        private string InjectAuthHeaders()
+        private string ApplyAuthHeaders(HttpRequestMessage request)
         {
-            // Remove any previous auth headers
-            _httpClient.DefaultRequestHeaders.Remove("X-API-Key");
-            _httpClient.DefaultRequestHeaders.Remove("X-TaskWorker-API-Key");
-
-            // Add appropriate auth header based on registration state
+            // Add auth header per-request to avoid shared-header races across concurrent requests.
             if (!string.IsNullOrEmpty(_bootstrapApiKey))
             {
-                _httpClient.DefaultRequestHeaders.Add("X-API-Key", _bootstrapApiKey);
+                request.Headers.Add("X-API-Key", _bootstrapApiKey);
                 return "bootstrap";
             }
             else if (!string.IsNullOrEmpty(_clientApiKey))
             {
-                _httpClient.DefaultRequestHeaders.Add("X-TaskWorker-API-Key", _clientApiKey);
+                request.Headers.Add("X-TaskWorker-API-Key", _clientApiKey);
                 return "worker";
             }
             else

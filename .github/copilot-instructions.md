@@ -98,6 +98,28 @@ Mode-specific behavior:
 - OS-native secure secret storage migration.
 - Windows service command parsing and service install hardening.
 
+## Implementation Status (Updated 2026-03-12)
+
+The following review outcomes have now been implemented in the codebase:
+
+1. Updater integrity policy is fail-closed by default with `AllowInsecureUpdate` override.
+2. Task runner concurrency hardening uses `ConcurrentDictionary` and single-cycle `SemaphoreSlim` guard.
+3. AI task verification includes required key checks and bounded payload/source limits.
+4. Registration health state machine (`Healthy`, `Degraded`, `BlockingNewTasks`) gates intake and supports recovery loops.
+5. Host API client header handling avoids duplicate sensitive defaults and injects auth per request.
+6. HTTP boundary isolation prevents host auth headers from being used against non-host absolute URLs.
+
+### Required Follow-up Changes
+
+Implemented test coverage now exists for:
+	- registration forced host re-registration vs local short-circuit behavior
+	- host-boundary isolation for non-host absolute URLs
+	- request-scoped host auth header behavior (no sensitive default-header persistence)
+	- update integrity block/allow branches
+	- task loop overlap prevention and snapshot safety
+
+Manual degraded-mode verification checklist has been added to `README.md`.
+
 ## Notes For Future Copilot Sessions
 
 - Treat this file as the source of truth for the above decisions.
