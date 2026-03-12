@@ -8,6 +8,9 @@ namespace hasheous_taskrunner.Classes.Tasks
     /// </summary>
     public class AITask : ITask
     {
+        private const int MaxSourceCount = 25;
+        private const int MaxSourceItemChars = 100_000;
+        private const int MaxTotalPayloadChars = 1_000_000;
 
         /// <inheritdoc/>
         public TaskType TaskType => TaskType.AIDescriptionAndTagging;
@@ -21,19 +24,63 @@ namespace hasheous_taskrunner.Classes.Tasks
             if (parameters == null)
             {
                 verificationResults.Status = TaskVerificationResult.VerificationStatus.Failure;
-                verificationResults.Details.Add("parameters", "Parameters cannot be null.");
+                verificationResults.Details["parameters"] = "Parameters cannot be null.";
                 return await Task.FromResult(verificationResults);
             }
 
             if (!parameters.ContainsKey("model_description") && !parameters.ContainsKey("model_tags"))
             {
-                verificationResults.Details.Add("model", "Missing required parameter: model_description or model_tags");
-                verificationResults.Status = TaskVerificationResult.VerificationStatus.Failure;
+                verificationResults.Details["model"] = "Missing required parameter: model_description or model_tags";
             }
 
             if (!parameters.ContainsKey("prompt_description") && !parameters.ContainsKey("prompt_tags"))
             {
-                verificationResults.Details.Add("prompt", "Missing required parameter: prompt_description or prompt_tags");
+                verificationResults.Details["prompt"] = "Missing required parameter: prompt_description or prompt_tags";
+            }
+
+            // Require sources key for RAG-style AI task payload compatibility.
+            if (!parameters.ContainsKey("sources"))
+            {
+                verificationResults.Details["sources"] = "Missing required parameter: sources";
+            }
+            else
+            {
+                var sourceIds = ParseSourceIds(parameters["sources"]);
+
+                if (sourceIds.Count > MaxSourceCount)
+                {
+                    verificationResults.Details["sources_count"] =
+                        $"Too many sources ({sourceIds.Count}). Maximum allowed is {MaxSourceCount}.";
+                }
+
+                foreach (string sourceId in sourceIds)
+                {
+                    string sourceKey = "Source_" + sourceId;
+                    if (!parameters.ContainsKey(sourceKey))
+                    {
+                        verificationResults.Details[sourceKey] =
+                            $"Source item referenced in sources list is missing: {sourceKey}";
+                        continue;
+                    }
+
+                    int sourceLength = parameters[sourceKey]?.Length ?? 0;
+                    if (sourceLength > MaxSourceItemChars)
+                    {
+                        verificationResults.Details[sourceKey] =
+                            $"Source item exceeds max size ({sourceLength} chars). Limit is {MaxSourceItemChars}.";
+                    }
+                }
+            }
+
+            int payloadChars = GetTotalPayloadChars(parameters);
+            if (payloadChars > MaxTotalPayloadChars)
+            {
+                verificationResults.Details["payload"] =
+                    $"Task payload exceeds max size ({payloadChars} chars). Limit is {MaxTotalPayloadChars}.";
+            }
+
+            if (verificationResults.Details.Count > 0)
+            {
                 verificationResults.Status = TaskVerificationResult.VerificationStatus.Failure;
             }
 
@@ -43,6 +90,27 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <inheritdoc/>
         public async Task<Dictionary<string, object>> ExecuteAsync(Dictionary<string, string>? parameters, Helpers.StatusUpdate statusUpdate, CancellationToken cancellationToken)
         {
+            if (parameters == null)
+            {
+                return new Dictionary<string, object>
+                {
+                    { "result", false },
+                    { "error", "Parameters cannot be null." }
+                };
+            }
+
+            var verification = await VerifyAsync(parameters, cancellationToken);
+            if (verification.Status != TaskVerificationResult.VerificationStatus.Success)
+            {
+                string verificationError = string.Join("; ", verification.Details.Select(d => $"{d.Key}: {d.Value}"));
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AITask verification failed before execution: " + verificationError);
+                return new Dictionary<string, object>
+                {
+                    { "result", false },
+                    { "error", "Verification failed: " + verificationError }
+                };
+            }
+
             // use the model and prompt parameters to call Ollama API
             var ai = Classes.Capabilities.Capabilities.GetCapabilityById<ICapability>(20); // AI capability
             if (ai == null)
@@ -52,11 +120,12 @@ namespace hasheous_taskrunner.Classes.Tasks
 
             // get sources from parameters
             List<string> sources = new List<string>();
-            foreach (string sourceKey in parameters["sources"].Split(';'))
+            foreach (string sourceKey in ParseSourceIds(parameters["sources"]))
             {
-                if (parameters.ContainsKey("Source_" + sourceKey.Trim()))
+                string paramKey = "Source_" + sourceKey;
+                if (parameters.ContainsKey(paramKey))
                 {
-                    sources.Add("# " + sourceKey.Trim() + "\n\n" + parameters["Source_" + sourceKey.Trim()] + "\n\n");
+                    sources.Add("# " + sourceKey + "\n\n" + parameters[paramKey] + "\n\n");
                 }
             }
 
@@ -177,6 +246,33 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             return await Task.FromResult(response ?? new Dictionary<string, object>());
+        }
+
+        private static int GetTotalPayloadChars(Dictionary<string, string> parameters)
+        {
+            int totalChars = 0;
+            foreach (var kvp in parameters)
+            {
+                totalChars += kvp.Key?.Length ?? 0;
+                totalChars += kvp.Value?.Length ?? 0;
+            }
+
+            return totalChars;
+        }
+
+        private static List<string> ParseSourceIds(string sourcesValue)
+        {
+            if (string.IsNullOrWhiteSpace(sourcesValue))
+            {
+                return new List<string>();
+            }
+
+            return sourcesValue
+                .Split(';')
+                .Select(s => s.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private string ollamaPrune(string input)
