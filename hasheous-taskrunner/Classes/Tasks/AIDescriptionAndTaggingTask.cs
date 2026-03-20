@@ -6,7 +6,7 @@ namespace hasheous_taskrunner.Classes.Tasks
     /// <summary>
     /// Represents an AI task that can be executed by the task runner.
     /// </summary>
-    public class AITask : ITask
+    public class AIDescriptionAndTaggingTask : ITask
     {
         private const int MaxSourceCount = 25;
         private const int MaxSourceItemChars = 100_000;
