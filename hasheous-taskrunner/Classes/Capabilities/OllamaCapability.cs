@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using hasheous_taskrunner.Classes.Communication;
 using hasheous_taskrunner.Classes.Communication.Clients;
 using hasheous_taskrunner.Classes.Helpers;
 
@@ -483,12 +484,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
 
         private static HttpClient CreateHttpClient(string baseUrl)
         {
-            var http = new HttpClient
-            {
-                BaseAddress = new Uri(baseUrl),
-                Timeout = TimeSpan.FromMinutes(10)
-            };
-            return http;
+            return DevelopmentHttpClientFactory.Create(baseUrl, TimeSpan.FromMinutes(10));
         }
 
         private async Task<double[]?> GetEmbeddingAsync(IOllamaClient client, string embedModel, string text)

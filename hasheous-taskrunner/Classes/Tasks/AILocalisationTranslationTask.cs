@@ -80,9 +80,9 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             // get english language file from host
-            string enuri = new Uri(new Uri(Config.BaseUriPath), "/localisation/en.json").ToString();
-            string? englishLanguageFileContent = await TaskRunner.Classes.HttpHelper.Get<string>(enuri);
-            if (englishLanguageFileContent == null)
+            string enuri = new Uri(new Uri(Config.Configuration["HostAddress"]), "/localisation/en.json").ToString();
+            Dictionary<string, string>? englishLanguageFile = await TaskRunner.Classes.HttpHelper.Get<Dictionary<string, string>>(enuri);
+            if (englishLanguageFile == null)
             {
                 return new Dictionary<string, object>
                 {
@@ -91,8 +91,6 @@ namespace hasheous_taskrunner.Classes.Tasks
                 };
             }
 
-            // deserialise the english language file into a Dictionary<string, string>
-            Dictionary<string, string>? englishLanguageFile = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(englishLanguageFileContent);
             if (englishLanguageFile == null)
             {
                 return new Dictionary<string, object>
@@ -105,7 +103,7 @@ namespace hasheous_taskrunner.Classes.Tasks
             Dictionary<string, string> translatedLanguageFile = new Dictionary<string, string>();
             foreach (var kvp in englishLanguageFile)
             {
-                string prompt = parameters["prompt"].Replace("<TEXT_TO_TRANSLATE>", kvp.Key);
+                string prompt = parameters["prompt"].Replace("<TEXT_TO_TRANSLATE>", kvp.Value);
 
                 // call the AI capability to translate the text
                 var translationResult = await ai.ExecuteAsync(new Dictionary<string, object>

@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using hasheous_taskrunner.Classes;
+using hasheous_taskrunner.Classes.Communication;
 using Newtonsoft.Json;
 
 namespace hasheous_taskrunner.Classes.Communication.Clients
@@ -48,11 +49,7 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             _baseUri = baseUri;
             _headerGuard = new HeaderGuard(baseUri);
 
-            _httpClient = new HttpClient
-            {
-                BaseAddress = new Uri(baseUri),
-                Timeout = TimeSpan.FromSeconds(30)
-            };
+            _httpClient = DevelopmentHttpClientFactory.Create(baseUri, TimeSpan.FromSeconds(30));
 
             // Set non-sensitive default headers
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));

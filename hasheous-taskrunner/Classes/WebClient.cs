@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using hasheous_taskrunner.Classes.Communication;
 using Newtonsoft.Json;
 
 namespace TaskRunner.Classes
@@ -184,29 +185,13 @@ namespace TaskRunner.Classes
         }
 
         /// <summary>
-        /// Creates and configures an HttpClient instance. In debug mode, configures to trust self-signed certificates.
+        /// Creates and configures an HttpClient instance.
+        /// Ignores server certificate errors when the runner is operating in development mode.
         /// </summary>
         /// <returns>A configured HttpClient instance.</returns>
         private static HttpClient CreateHttpClient()
         {
-#if DEBUG
-            // In debug mode, trust self-signed certificates (e.g., Kestrel development certificates)
-            var handler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
-            };
-            var httpClient = new HttpClient(handler)
-            {
-                Timeout = TimeSpan.FromSeconds(30)  // Prevent infinite hangs
-            };
-            return httpClient;
-#else
-            var httpClient = new HttpClient()
-            {
-                Timeout = TimeSpan.FromSeconds(30)  // Prevent infinite hangs
-            };
-            return httpClient;
-#endif
+            return DevelopmentHttpClientFactory.Create(timeout: TimeSpan.FromSeconds(30));
         }
 
         /// <summary>

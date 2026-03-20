@@ -7,6 +7,41 @@ namespace hasheous_taskrunner.Tests;
 
 public class UpdaterRegressionTests
 {
+    [Theory]
+    [InlineData(true, null, null, null, true)]
+    [InlineData(false, "Development", null, null, true)]
+    [InlineData(false, null, "Development", null, true)]
+    [InlineData(false, null, null, "C:\\repo\\bin\\Debug\\net8.0\\runner.exe", true)]
+    [InlineData(false, null, null, @"/repo/obj/Debug/net8.0/runner", true)]
+    [InlineData(false, null, null, "C:\\repo\\bin\\Release\\net8.0\\runner.exe", false)]
+    public void DevelopmentMode_Detection_MatchesExpectedRules(
+        bool debuggerAttached,
+        string? dotnetEnvironment,
+        string? aspnetcoreEnvironment,
+        string? processPath,
+        bool expected)
+    {
+        Type factoryType = typeof(Updater).Assembly.GetType("hasheous_taskrunner.Classes.Communication.DevelopmentHttpClientFactory")
+            ?? throw new InvalidOperationException("Unable to locate DevelopmentHttpClientFactory type.");
+
+        MethodInfo? method = factoryType.GetMethod(
+            "IsDevelopmentMode",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(bool), typeof(string), typeof(string), typeof(string) },
+            modifiers: null);
+
+        if (method == null)
+        {
+            throw new InvalidOperationException("Unable to locate DevelopmentHttpClientFactory.IsDevelopmentMode overload.");
+        }
+
+        object? result = method.Invoke(null, new object?[] { debuggerAttached, dotnetEnvironment, aspnetcoreEnvironment, processPath });
+
+        Assert.IsType<bool>(result);
+        Assert.Equal(expected, (bool)result!);
+    }
+
     [Fact]
     public async Task MissingChecksum_IsBlocked_WhenAllowInsecureUpdateIsFalse()
     {

@@ -15,7 +15,7 @@ namespace hasheous_taskrunner.Classes.Communication
         private static DateTime lastUpdateCheckTime = DateTime.MinValue;
         private static readonly TimeSpan updateCheckInterval = TimeSpan.FromHours(24);
         private static readonly string GitHubApiUrl = "https://api.github.com/repos/gaseous-project/hasheous-taskrunner/releases";
-        private static readonly HttpClient httpClient = new HttpClient();
+        private static readonly HttpClient httpClient = DevelopmentHttpClientFactory.Create(timeout: TimeSpan.FromSeconds(120));
 
         static Updater()
         {
@@ -445,27 +445,7 @@ namespace hasheous_taskrunner.Classes.Communication
         /// <returns>True if running in development environment, false otherwise.</returns>
         private static bool IsRunningInDevelopmentEnvironment()
         {
-            // Check if debugger is attached
-            if (System.Diagnostics.Debugger.IsAttached)
-            {
-                return true;
-            }
-
-            // Check for development environment variable
-            string environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "";
-            if (environment.Equals("Development", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            // Check if running from a project directory (bin/Debug or obj folder in path)
-            string processPath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-            if (processPath.Contains("bin/Debug") || processPath.Contains("bin\\Debug") || processPath.Contains("/obj/"))
-            {
-                return true;
-            }
-
-            return false;
+            return DevelopmentHttpClientFactory.IsDevelopmentMode();
         }
 
         /// <summary>

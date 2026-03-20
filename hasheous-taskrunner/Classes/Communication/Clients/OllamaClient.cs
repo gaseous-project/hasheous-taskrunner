@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using hasheous_taskrunner.Classes.Communication;
 
 namespace hasheous_taskrunner.Classes.Communication.Clients
 {
@@ -21,11 +22,7 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
         /// <param name="baseUrl">The Ollama service base URL (e.g., "http://localhost:11434").</param>
         public OllamaClient(string baseUrl)
         {
-            _httpClient = new HttpClient
-            {
-                BaseAddress = new Uri(baseUrl),
-                Timeout = TimeSpan.FromMinutes(10)  // Ollama operations can be long-running (model pulls, embeddings)
-            };
+            _httpClient = DevelopmentHttpClientFactory.Create(baseUrl, TimeSpan.FromMinutes(10));
         }
 
         /// <inheritdoc/>
