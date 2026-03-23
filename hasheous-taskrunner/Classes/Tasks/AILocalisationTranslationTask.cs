@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using hasheous_taskrunner.Classes.Capabilities;
 using hasheous_taskrunner.Classes.Helpers;
 
@@ -103,6 +104,42 @@ namespace hasheous_taskrunner.Classes.Tasks
             Dictionary<string, string> translatedLanguageFile = new Dictionary<string, string>();
             foreach (var kvp in englishLanguageFile)
             {
+                // if the value is null or whitespace, keep it as is in the translated file (to avoid issues with AI translation and to preserve empty values)
+                if (String.IsNullOrWhiteSpace(kvp.Value))
+                {
+                    translatedLanguageFile[kvp.Key] = kvp.Value; // keep empty values as is
+                    continue;
+                }
+
+                // if the value is a placeholder (e.g. "{0}"), keep it as is in the translated file (to avoid issues with AI translation and to preserve placeholders)
+                if (kvp.Value.StartsWith('{') && kvp.Value.EndsWith('}'))
+                {
+                    translatedLanguageFile[kvp.Key] = kvp.Value; // keep placeholders as is
+                    continue;
+                }
+
+                // if the value is a URL, keep it as is in the translated file (to avoid issues with AI translation and to preserve URLs)
+                if (Uri.IsWellFormedUriString(kvp.Value, UriKind.Absolute))
+                {
+                    translatedLanguageFile[kvp.Key] = kvp.Value; // keep URLs as is
+                    continue;
+                }
+
+                // if the value is a number or contains only numbers and common formatting characters, keep it as is in the translated file (to avoid issues with AI translation and to preserve numbers)
+                if (Regex.IsMatch(kvp.Value, @"^\s*[\d\.\-/:%]+\s*$"))
+                {
+                    translatedLanguageFile[kvp.Key] = kvp.Value;
+                    continue;
+                }
+
+                // if the value contains a file path (e.g. "C:\path\to\file" or "/path/to/file"), keep it as is in the translated file (to avoid issues with AI translation and to preserve file paths)
+                if (kvp.Value.Contains("\\") || kvp.Value.Contains("/") || Regex.IsMatch(kvp.Value, @"\.\w{1,5}$"))
+                {
+                    translatedLanguageFile[kvp.Key] = kvp.Value;
+                    continue;
+                }
+
+                // replace <TEXT_TO_TRANSLATE> in the prompt with the text to translate
                 string prompt = parameters["prompt"].Replace("<TEXT_TO_TRANSLATE>", kvp.Value);
 
                 // call the AI capability to translate the text

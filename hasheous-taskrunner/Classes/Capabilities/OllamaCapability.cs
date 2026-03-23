@@ -471,7 +471,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
 
                 result["result"] = true;
-                result["response"] = responseText ?? string.Empty;
+                result["response"] = responseText.Trim() ?? string.Empty;
                 return result;
             }
             catch (Exception ex)
