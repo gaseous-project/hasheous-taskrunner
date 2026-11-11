@@ -6,7 +6,7 @@ namespace hasheous_taskrunner.Classes.Tasks
     /// <summary>
     /// Represents an AI task that can be executed by the task runner.
     /// </summary>
-    public class AITask : ITask
+    public class AIDescriptionAndTaggingTask : ITask
     {
         private const int MaxSourceCount = 25;
         private const int MaxSourceItemChars = 100_000;
@@ -103,7 +103,7 @@ namespace hasheous_taskrunner.Classes.Tasks
             if (verification.Status != TaskVerificationResult.VerificationStatus.Success)
             {
                 string verificationError = string.Join("; ", verification.Details.Select(d => $"{d.Key}: {d.Value}"));
-                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AITask verification failed before execution: " + verificationError);
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask verification failed before execution: " + verificationError);
                 return new Dictionary<string, object>
                 {
                     { "result", false },
@@ -177,7 +177,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                     { "error", descriptionResult.ContainsKey("error") ? descriptionResult["error"] : "Unknown error from AI capability." }
                 };
 
-                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AITask: AI capability returned an error: " + (response.ContainsKey("error") ? response["error"] : "Unknown error."));
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask: AI capability returned an error: " + (response.ContainsKey("error") ? response["error"] : "Unknown error."));
                 return response;
             }
 

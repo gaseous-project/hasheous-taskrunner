@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>hasheous_taskrunner</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -16,17 +15,18 @@
     
     <!-- Specify supported runtime identifiers for cross-platform publishing -->
     <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <!-- Disable PublishReadyToRun for macOS to avoid System.IO.Pipes assembly loading issues -->
     <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin/Debug/net8.0/hasheous-taskrunner.xml</DocumentationFile>
+    <DocumentationFile>bin/Debug/net10.0/hasheous-taskrunner.xml</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin/Release/net8.0/hasheous-taskrunner.xml</DocumentationFile>
+    <DocumentationFile>bin/Release/net10.0/hasheous-taskrunner.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

@@ -48,7 +48,16 @@ namespace hasheous_taskrunner.Classes.Communication.Clients
             _baseUri = baseUri;
             _headerGuard = new HeaderGuard(baseUri);
 
+#if DEBUG
+            // Debug builds only: trust self-signed certificates (e.g., Kestrel development certificates).
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
+            };
+            _httpClient = new HttpClient(handler)
+#else
             _httpClient = new HttpClient
+#endif
             {
                 BaseAddress = new Uri(baseUri),
                 Timeout = TimeSpan.FromSeconds(30)

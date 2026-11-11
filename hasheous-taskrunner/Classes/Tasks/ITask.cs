@@ -164,7 +164,12 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <summary>
         /// Task for AI description generation and tagging.
         /// </summary>
-        AIDescriptionAndTagging = 0
+        AIDescriptionAndTagging = 0,
+
+        /// <summary>
+        /// Task for AI localisation generation.
+        /// </summary>
+        AILocalisationGeneration = 10
     }
 
     /// <summary>

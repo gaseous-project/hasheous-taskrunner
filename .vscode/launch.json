@@ -7,13 +7,13 @@
             "request": "launch",
             "preLaunchTask": "build",
             "osx": {
-                "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net8.0/osx-arm64/hasheous-taskrunner.dll"
+                "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net10.0/hasheous-taskrunner.dll"
             },
             "windows": {
-                "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net8.0/win-x64/hasheous-taskrunner.dll"
+                "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net10.0/hasheous-taskrunner.dll"
             },
             "linux": {
-                "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net8.0/linux-x64/hasheous-taskrunner.dll"
+                "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net10.0/hasheous-taskrunner.dll"
             },
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal"
