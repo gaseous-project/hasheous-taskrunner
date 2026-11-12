@@ -20,7 +20,7 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <inheritdoc/>
         public async Task<TaskVerificationResult> VerifyAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
         {
-            // check for required parameters - model and prompt
+            // check for required parameters
             TaskVerificationResult verificationResults = new TaskVerificationResult();
 
             if (parameters == null)
@@ -33,6 +33,19 @@ namespace hasheous_taskrunner.Classes.Tasks
             if (!parameters.ContainsKey("language"))
             {
                 verificationResults.Details["language"] = "Missing required parameter: language";
+            }
+
+            // language must be a valid two character ISO language code - check against cultureinfo
+            if (parameters.ContainsKey("language"))
+            {
+                try
+                {
+                    var culture = CultureInfo.GetCultureInfo(parameters["language"]);
+                }
+                catch (CultureNotFoundException)
+                {
+                    verificationResults.Details["language"] = "Invalid language code: " + parameters["language"];
+                }
             }
 
             if (verificationResults.Details.Count > 0)
@@ -72,70 +85,71 @@ namespace hasheous_taskrunner.Classes.Tasks
                 throw new InvalidOperationException($"Failed to download base language content for en");
             }
 
-            // loop through all of variants of the requested language
-            // pull from the server first to compare each variant string with the base language content (each string has a last updated value)
-            var baseCulture = CultureInfo.GetCultureInfo(parameters["language"]);
-            var languageVariants = CultureInfo.GetCultures(CultureTypes.AllCultures)
-                .Where(c => c.TwoLetterISOLanguageName == baseCulture.TwoLetterISOLanguageName)
-                .ToList();
-
-            DateTime utcNow = DateTime.UtcNow;
-            Dictionary<string, object> responseVars = new Dictionary<string, object>();
-            foreach (var languageVariant in languageVariants)
+            // pull from the server first to compare each string with the base language content (each string has a last updated value)
+            var targetCulture = CultureInfo.GetCultureInfo(parameters["language"]);
+            LocalisationItem? targetLocalisationItem;
+            try
             {
-                // download the content for the current language variant from the server - if we get a 404, we'll need to create a whole new language file
-                LocalisationItem variantLocalisationItem = null;
-                try
-                {
-                    variantLocalisationItem = await Communication.Common.Get<LocalisationItem>($"/localisation/{languageVariant.Name}.json");
-                }
-                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-                {
-                    // create a new language file if it doesn't exist
-                    variantLocalisationItem = new LocalisationItem
+                targetLocalisationItem = await Communication.Common.Get<LocalisationItem>($"/localisation/{targetCulture.TwoLetterISOLanguageName}.json");
+            }
+            catch (HttpRequestException ex)
+            {
+                if (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    targetLocalisationItem = new LocalisationItem
                     {
-                        FullCode = languageVariant.Name,
-                        EnglishName = languageVariant.EnglishName.Split('(')[0].Trim(),
-                        NativeName = languageVariant.NativeName.Split('(')[0].Trim(),
-                        EnglishRegionName = languageVariant.EnglishName.Split('(').Length > 1 ? languageVariant.EnglishName.Split('(')[1].Trim(')') : "",
-                        NativeRegionName = languageVariant.NativeName.Split('(').Length > 1 ? languageVariant.NativeName.Split('(')[1].Trim(')') : "",
-                        Direction = languageVariant.TextInfo.IsRightToLeft ? LocalisationItem.LanguageDirection.RightToLeft : LocalisationItem.LanguageDirection.LeftToRight,
+                        FullCode = targetCulture.Name,
+                        EnglishName = targetCulture.EnglishName,
+                        NativeName = targetCulture.NativeName,
+                        Direction = targetCulture.TextInfo.IsRightToLeft ? LocalisationItem.LanguageDirection.RightToLeft : LocalisationItem.LanguageDirection.LeftToRight,
                         Version = 1,
                         Translations = new Dictionary<string, LocalisationItem.TranslationItem>()
                     };
-                }
+                else
+                    throw;
+            }
 
-                // loop through all of the Translations in the english base language and compare with the variant - force translation if the date on the english translation is newer than the variant, or the translation doesn't exist in the variant
-                string model = "translategemma:12b";
-                foreach (var kvp in enLocalisationItem.Translations)
+            Dictionary<string, object> responseVars = new Dictionary<string, object>();
+
+            // loop through all of the Translations in the english base language and compare with the variant - force translation if the date on the english translation is newer than the variant, or the translation doesn't exist in the variant
+            string model = "translategemma:27b";
+            foreach (var kvp in enLocalisationItem.Translations)
+            {
+                if ((!targetLocalisationItem.Translations.ContainsKey(kvp.Key) || kvp.Value.UpdatedAt > targetLocalisationItem.Translations[kvp.Key].UpdatedAt) && !string.IsNullOrWhiteSpace(kvp.Value.Value))
                 {
-                    if (!variantLocalisationItem.Translations.ContainsKey(kvp.Key) || kvp.Value.UpdatedAt > variantLocalisationItem.Translations[kvp.Key].UpdatedAt)
-                    {
-                        // begin translation
-                        statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Translating " + kvp.Key + " for language " + languageVariant.EnglishName);
-                        string prompt = "Translate the following English (en) text to " + languageVariant.EnglishName + " (" + languageVariant.Name + "). Preserve all Markdown and HTML syntax, and keep variable placeholders like {var} or %s intact. Output ONLY the translated text and nothing else.\n\n\n" + kvp.Value.Value.ToString().Trim();
-                        var translatedString = await ai.ExecuteAsync(new Dictionary<string, object>
+                    // begin translation
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Translating " + kvp.Key + " for language " + targetCulture.EnglishName);
+                    string prompt = "Translate the following English (en) text to " + targetCulture.EnglishName + " (" + targetCulture.Name + "). Preserve all Markdown and HTML syntax, and keep variable placeholders like {var} or %s intact. Output ONLY the translated text and nothing else.\n\n\n" + kvp.Value.Value.ToString().Trim();
+                    var translatedString = await ai.ExecuteAsync(new Dictionary<string, object>
                         {
                             { "model", model },
                             { "prompt", prompt },
                         }, statusUpdate);
 
-                        if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()))
+                    if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()))
+                    {
+                        targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
                         {
-                            variantLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
-                            {
-                                Value = translatedString["response"].ToString().Trim(),
-                                AITranslated = true,
-                                CreatedAt = utcNow,
-                                UpdatedAt = utcNow
-                            };
-                        }
+                            Value = translatedString["response"].ToString().Trim(),
+                            AITranslated = true,
+                            CreatedAt = kvp.Value.CreatedAt,
+                            UpdatedAt = kvp.Value.UpdatedAt
+                        };
                     }
                 }
-
-                if (variantLocalisationItem?.Translations.Count > 0)
-                    responseVars[languageVariant.Name] = variantLocalisationItem;
+                else
+                {
+                    // insert dummy key - this is to prevent missing translations in the target localisation item from causing issues
+                    targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
+                    {
+                        Value = kvp.Value.Value,
+                        AITranslated = true,
+                        CreatedAt = kvp.Value.CreatedAt,
+                        UpdatedAt = kvp.Value.UpdatedAt
+                    };
+                }
             }
+
+            responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);
 
             Dictionary<string, object> response = new Dictionary<string, object>();
             response = new Dictionary<string, object>
