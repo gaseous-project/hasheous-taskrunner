@@ -16,6 +16,9 @@ namespace hasheous_taskrunner.Classes.Tasks
         public TaskType TaskType => TaskType.AIDescriptionAndTagging;
 
         /// <inheritdoc/>
+        public bool RequiresExclusiveExecution => false;
+
+        /// <inheritdoc/>
         public async Task<TaskVerificationResult> VerifyAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
         {
             // check for required parameters - model and prompt

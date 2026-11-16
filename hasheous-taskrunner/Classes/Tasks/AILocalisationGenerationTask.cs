@@ -18,6 +18,9 @@ namespace hasheous_taskrunner.Classes.Tasks
         public TaskType TaskType => TaskType.AILocalisationGeneration;
 
         /// <inheritdoc/>
+        public bool RequiresExclusiveExecution => true;
+
+        /// <inheritdoc/>
         public async Task<TaskVerificationResult> VerifyAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
         {
             // check for required parameters

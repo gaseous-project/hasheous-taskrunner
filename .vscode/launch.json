@@ -16,7 +16,11 @@
                 "program": "${workspaceFolder}/hasheous-taskrunner/bin/Debug/net10.0/hasheous-taskrunner.dll"
             },
             "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "args": [
+                "--notui",
+                "false"
+            ]
         }
     ]
 }

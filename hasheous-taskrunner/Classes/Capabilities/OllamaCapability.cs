@@ -40,6 +40,9 @@ namespace hasheous_taskrunner.Classes.Capabilities
         public bool IsInternalCapability => true;
 
         /// <inheritdoc/>
+        public bool RequiresMutualExclusivity => true;
+
+        /// <inheritdoc/>
         public Dictionary<string, object>? Configuration
         {
             get

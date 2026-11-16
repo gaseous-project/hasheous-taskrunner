@@ -57,6 +57,99 @@ namespace hasheous_taskrunner.Classes.Communication
         private static int _MaxConcurrentTasks = 1;
 
         /// <summary>
+        /// Determines whether a new task can be accepted given the currently running tasks.
+        /// First checks if the task or any running task requires exclusive execution.
+        /// Then checks capability-based exclusivity for non-exclusive tasks.
+        /// </summary>
+        /// <param name="newTask">The task item to check for compatibility with active tasks.</param>
+        /// <returns>True if the task can be accepted; false if exclusivity constraints are violated.</returns>
+        private static bool CanAcceptNewTask(TaskItem newTask)
+        {
+            if (activeTaskExecutors.Count == 0)
+            {
+                return true;
+            }
+
+            // Get the ITask implementation for the new task to check exclusivity requirement
+            var newTaskImpl = GetTaskImplementation(newTask.TaskName);
+            bool newTaskRequiresExclusivity = newTaskImpl?.RequiresExclusiveExecution ?? false;
+
+            // Check if any running task would conflict
+            foreach (var executor in activeTaskExecutors.Values)
+            {
+                var runningTaskImpl = GetTaskImplementation(executor.job.TaskName);
+                bool runningTaskRequiresExclusivity = runningTaskImpl?.RequiresExclusiveExecution ?? false;
+
+                // If either task requires exclusive execution and they're different types, block
+                if ((newTaskRequiresExclusivity || runningTaskRequiresExclusivity) && executor.job.TaskName != newTask.TaskName)
+                {
+                    return false;
+                }
+
+                // If it's the same task type, no conflict (can run multiple of same type)
+                if (executor.job.TaskName == newTask.TaskName)
+                {
+                    continue;
+                }
+
+                // For non-exclusive tasks, check capability-based conflicts
+                if (!newTaskRequiresExclusivity && !runningTaskRequiresExclusivity)
+                {
+                    var newTaskCapabilities = newTask.RequiredCapabilities ?? new List<hasheous_taskrunner.Classes.Tasks.Capabilities>();
+                    var runningTaskCapabilities = executor.job.RequiredCapabilities ?? new List<hasheous_taskrunner.Classes.Tasks.Capabilities>();
+
+                    // Find shared capabilities that require mutual exclusivity
+                    var sharedExclusiveCapabilities = newTaskCapabilities
+                        .Intersect(runningTaskCapabilities)
+                        .Where(capId => IsCapabilityExclusive((int)capId))
+                        .ToList();
+
+                    // If there's any shared exclusive capability with a different task type, conflict
+                    if (sharedExclusiveCapabilities.Count > 0)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the ITask implementation for a given task type.
+        /// </summary>
+        /// <param name="taskType">The task type to get the implementation for.</param>
+        /// <returns>An ITask instance if found; otherwise null.</returns>
+        private static ITask? GetTaskImplementation(hasheous_taskrunner.Classes.Tasks.TaskType taskType)
+        {
+            return taskType switch
+            {
+                hasheous_taskrunner.Classes.Tasks.TaskType.AIDescriptionAndTagging => new AIDescriptionAndTaggingTask(),
+                hasheous_taskrunner.Classes.Tasks.TaskType.AILocalisationGeneration => new AILocalisationGenerationTask(),
+                _ => null
+            };
+        }
+
+        /// <summary>
+        /// Checks whether a capability requires mutual exclusivity between different task types.
+        /// </summary>
+        /// <param name="capabilityId">The capability ID to check.</param>
+        /// <returns>True if the capability requires mutual exclusivity; false otherwise.</returns>
+        private static bool IsCapabilityExclusive(int capabilityId)
+        {
+            try
+            {
+                var capability = Classes.Capabilities.Capabilities.GetCapabilityById<Classes.Capabilities.ICapability>(capabilityId);
+                return capability?.RequiresMutualExclusivity ?? false;
+            }
+            catch
+            {
+                // If capability cannot be retrieved, default to non-exclusive
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Fetches and executes tasks from the configured host if the fetch interval has elapsed.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
@@ -267,11 +360,19 @@ namespace hasheous_taskrunner.Classes.Communication
                                 break;
                             }
 
+                            // Check if the task can be accepted based on shared exclusive capabilities with running tasks.
+                            // Tasks of different types can only run concurrently if they don't share an exclusive capability (like Ollama).
+                            if (!CanAcceptNewTask(job))
+                            {
+                                Console.WriteLine($"Task ID {job.Id} (type: {job.TaskName}, capabilities: {string.Join(", ", job.RequiredCapabilities ?? new List<hasheous_taskrunner.Classes.Tasks.Capabilities>())}) is paused; a different task type is using an exclusive capability.");
+                                break;
+                            }
+
                             // Create a new TaskExecutor for the job and add it to the active executors
                             var executor = new TaskExecutor(job);
                             if (activeTaskExecutors.TryAdd(job.Id, executor))
                             {
-                                Console.WriteLine($"Added task ID {job.Id} to active executors. Total active tasks: {activeTaskExecutors.Count}");
+                                Console.WriteLine($"Added task ID {job.Id} (type: {job.TaskName}) to active executors. Total active tasks: {activeTaskExecutors.Count}");
                             }
                         }
                     }

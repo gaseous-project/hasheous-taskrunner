@@ -14,6 +14,13 @@ namespace hasheous_taskrunner.Classes.Tasks
         public TaskType TaskType { get; }
 
         /// <summary>
+        /// Gets a value indicating whether this task type requires exclusive execution.
+        /// When true, only one task of this type can run at a time, and no other tasks can run concurrently.
+        /// When false (default), multiple tasks may run concurrently based on capability compatibility.
+        /// </summary>
+        public bool RequiresExclusiveExecution => false;
+
+        /// <summary>
         /// Verifies the task parameters asynchronously.
         /// </summary>
         /// <param name="parameters">A dictionary of parameters required for task verification.</param>
@@ -169,7 +176,9 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <summary>
         /// Task for AI localisation generation.
         /// </summary>
-        AILocalisationGeneration = 10
+        AILocalisationGeneration = 10,
+
+        AILocalisationGenerationRegional = 20
     }
 
     /// <summary>
