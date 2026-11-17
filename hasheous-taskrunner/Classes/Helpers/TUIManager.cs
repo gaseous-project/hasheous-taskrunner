@@ -439,12 +439,14 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.Write("\x1b[36m║ \x1b[36m");
 
             // Task ID (cyan)
+            int taskIdWidth = 10;
             string taskIdStr = $"#{taskId}";
-            _directOutput.Write(taskIdStr.PadRight(8));
+            _directOutput.Write(taskIdStr.PadRight(taskIdWidth));
 
             // Task Status (colored by status)
-            string statusStr = executor.job.Status.ToString().PadRight(12);
-            if (statusStr.Length > 12) statusStr = statusStr.Substring(0, 12);
+            int statusWidth = 20;
+            string statusStr = executor.job.Status.ToString().PadRight(statusWidth);
+            if (statusStr.Length > statusWidth) statusStr = statusStr.Substring(0, statusWidth);
 
             // Choose color based on status
             string statusColor = executor.job.Status switch
@@ -469,21 +471,22 @@ namespace hasheous_taskrunner.Classes.Helpers
 
             // Task Type (green)
             _directOutput.Write("\x1b[32m");
-            string taskType = executor.job.TaskName.ToString().PadRight(20);
-            if (taskType.Length > 20) taskType = taskType.Substring(0, 17) + "...";
+            int taskNameWidth = width - (2 + taskIdWidth + statusWidth + 2);
+            string taskType = executor.job.TaskName.ToString().PadRight(taskNameWidth);
+            if (taskType.Length > taskNameWidth) taskType = taskType.Substring(0, taskNameWidth - 3) + "...";
             _directOutput.Write(taskType);
 
-            string statusSummary = executor.CurrentStatus.LastOrDefault()?.Message ?? "";
-            int availableWidth = width - 45;  // Adjusted for status field
-            if (statusSummary.Length > availableWidth)
-            {
-                statusSummary = statusSummary.Substring(0, availableWidth - 3) + "...";
-            }
+            // string statusSummary = executor.CurrentStatus.LastOrDefault()?.Message ?? "";
+            // int availableWidth = width - 45;  // Adjusted for status field
+            // if (statusSummary.Length > availableWidth)
+            // {
+            //     statusSummary = statusSummary.Substring(0, availableWidth - 3) + "...";
+            // }
 
             _directOutput.Write("\x1b[90m");
-            _directOutput.Write(statusSummary);
+            // _directOutput.Write(statusSummary);
 
-            int usedWidth = 2 + 8 + 12 + 20 + statusSummary.Length;
+            int usedWidth = 2 + taskIdWidth + statusWidth + taskNameWidth; // + statusSummary.Length;
             int padding = width - usedWidth - 2;
             if (padding > 0)
             {

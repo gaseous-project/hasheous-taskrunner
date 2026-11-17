@@ -114,13 +114,15 @@ namespace hasheous_taskrunner.Classes.Tasks
             Dictionary<string, object> responseVars = new Dictionary<string, object>();
 
             // loop through all of the Translations in the english base language and compare with the variant - force translation if the date on the english translation is newer than the variant, or the translation doesn't exist in the variant
-            string model = "gemma3:27b";
+            string model = GetRecommendedModel(targetCulture.Name);
+            int translationCount = 0;
             foreach (var kvp in enLocalisationItem.Translations)
             {
-                if ((!targetLocalisationItem.Translations.ContainsKey(kvp.Key) || kvp.Value.UpdatedAt > targetLocalisationItem.Translations[kvp.Key].UpdatedAt) && !string.IsNullOrWhiteSpace(kvp.Value.Value))
+                translationCount++;
+                if ((!targetLocalisationItem.Translations.ContainsKey(kvp.Key) || kvp.Value.UpdatedAt > targetLocalisationItem.Translations[kvp.Key].UpdatedAt) && !string.IsNullOrWhiteSpace(kvp.Value.Value) && !targetCulture.IsNeutralCulture)
                 {
                     // begin translation
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Localising " + kvp.Key + " for language " + targetCulture.EnglishName);
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: [" + translationCount + " / " + enLocalisationItem.Translations.Count + "] Localising " + kvp.Key + " for language " + targetCulture.EnglishName);
 
                     string jsonEncodedValue = Newtonsoft.Json.JsonConvert.SerializeObject(kvp.Value.Value.ToString().Trim());
 
@@ -134,7 +136,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                             { "prompt", prompt },
                         }, statusUpdate);
 
-                        if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()))
+                        if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()) && Tools.IsWithinSimilarityThreshold(kvp.Value.Value, translatedString["response"].ToString(), 0.80))
                         {
                             string translatedValue = Newtonsoft.Json.JsonConvert.DeserializeObject<string>(translatedString["response"]?.ToString()?.Trim() ?? "") ?? "";
                             bool aiTranslated = true;
@@ -291,6 +293,42 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             return input;
+        }
+
+        private static string GetRecommendedModel(string localeCode)
+        {
+            var culture = new CultureInfo(localeCode);
+
+            if (culture.TwoLetterISOLanguageName == "en")
+                return "gemma3:12b";
+
+            return IsLatinScript(localeCode)
+                ? "gemma3:12b"
+                : "gemma3:27b";
+        }
+
+        private static bool IsLatinScript(string localeCode)
+        {
+            var culture = new CultureInfo(localeCode);
+
+            // Quick exit for right-to-left languages (Arabic, Hebrew, etc.)
+            if (culture.TextInfo.IsRightToLeft)
+                return false;
+
+            // Inspect all letter characters in the native language name
+            var letters = culture.NativeName.Where(char.IsLetter).ToList();
+
+            if (letters.Count == 0)
+                return false;
+
+            // Check if all letters fall within Unicode Latin blocks:
+            // Basic Latin (0x0000-0x007F)
+            // Latin-1 Supplement (0x0080-0x00FF)
+            // Latin Extended-A & Extended-B (0x0100-0x024F)
+            // Latin Extended Additional (0x1E00-0x1EFF) - covers Vietnamese, etc.
+            return letters.All(c =>
+                c <= 0x024F || (c >= 0x1E00 && c <= 0x1EFF)
+            );
         }
     }
 }
