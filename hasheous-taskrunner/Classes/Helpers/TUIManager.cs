@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using hasheous_taskrunner.Classes.Capabilities;
 using hasheous_taskrunner.Classes.Communication;
 
@@ -30,6 +31,34 @@ namespace hasheous_taskrunner.Classes.Helpers
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+        private static string leftBorder = "\x1b[36m║ \x1b[36m";
+        private static string rightBorder = " \x1b[36m║\x1b[0m";
+
+        /// <summary>
+        /// Gets the width of the content area within the pane, excluding borders.
+        /// </summary>
+        private static int paneContentWidth
+        {
+            get
+            {
+                int leftBorderWidth = GetStringLength(leftBorder);
+                int rightBorderWidth = GetStringLength(rightBorder);
+
+                return Console.WindowWidth - leftBorderWidth - rightBorderWidth;
+            }
+        }
+
+        /// <summary>
+        /// Gets the length of a string excluding ANSI escape codes.
+        /// </summary>
+        /// <param name="content">The string whose length is to be calculated.</param>
+        /// <returns>The length of the string excluding ANSI escape codes.</returns>
+        private static int GetStringLength(string content)
+        {
+            string cleanText = Regex.Replace(content, @"\x1B\[[0-9;]*[a-zA-Z]", "");
+            return cleanText.Length;
+        }
 
         public static bool TryEnableVirtualTerminal()
         {
@@ -348,7 +377,7 @@ namespace hasheous_taskrunner.Classes.Helpers
                 if (currentLine >= paneHeight) break;
 
                 var kvp = activeTasks[i];
-                DrawTaskLine(width, kvp.Key, kvp.Value);
+                DrawRow(DrawTaskLine(kvp.Key, kvp.Value));
                 currentLine++;
 
                 int logLinesForTask = baseLogsPerTask + (i < extraLogs ? 1 : 0);
@@ -379,6 +408,23 @@ namespace hasheous_taskrunner.Classes.Helpers
                 DrawEmptyLine(width, "");
                 currentLine++;
             }
+        }
+
+        private static void DrawRow(string content)
+        {
+            if (_directOutput == null) return;
+
+            // Remove ANSI escape codes for accurate length calculation
+            int contentLength = GetStringLength(content);
+
+            // add padding to align content within the pane
+            string padding = new string(' ', Math.Max(0, paneContentWidth - contentLength));
+
+            // Construct the full row with borders and padding
+            string row = leftBorder + content + padding + rightBorder;
+
+            // Write the constructed row to the output
+            _directOutput.WriteLine(row);
         }
 
         private static void DrawConsolePane(int width, int paneHeight)
@@ -432,21 +478,60 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.WriteLine(" \x1b[36m║\x1b[0m");
         }
 
-        private static void DrawTaskLine(int width, long taskId, TaskExecutor executor)
-        {
-            if (_directOutput == null) return;
+        private static int StatusThrobberIndex = 0;
+        private static string[] StatusThrobberFrames = new[] { "|", "/", "-", "\\" };
 
-            _directOutput.Write("\x1b[36m║ \x1b[36m");
+        /// <summary>
+        /// Draws a single task line for the console UI and returns it as a string.
+        /// </summary>
+        /// <param name="taskId">The ID of the task.</param>
+        /// <param name="executor">The task executor containing task status and progress.</param>
+        /// <returns>A formatted string representing the task line.</returns>
+        private static string DrawTaskLine(long taskId, TaskExecutor executor)
+        {
+            string rowContent = "";
+
+            // Create throbber for tasks that are waiting
+            Tasks.QueueItemStatus[] throbberStatuses =
+            {
+                Tasks.QueueItemStatus.WaitingForSubmission,
+                Tasks.QueueItemStatus.WaitingToStart,
+                Tasks.QueueItemStatus.Verifying,
+                Tasks.QueueItemStatus.Pending,
+                Tasks.QueueItemStatus.Assigned
+            };
 
             // Task ID (cyan)
             int taskIdWidth = 10;
             string taskIdStr = $"#{taskId}";
-            _directOutput.Write(taskIdStr.PadRight(taskIdWidth));
+            rowContent += taskIdStr.PadRight(taskIdWidth);
 
             // Task Status (colored by status)
             int statusWidth = 20;
-            string statusStr = executor.job.Status.ToString().PadRight(statusWidth);
-            if (statusStr.Length > statusWidth) statusStr = statusStr.Substring(0, statusWidth);
+            int progressWidth = 6;
+            int statusAndProgressWidth = statusWidth + progressWidth;
+            string progressStr = "".PadLeft(progressWidth);
+            if (executor.job.Status == Tasks.QueueItemStatus.InProgress)
+            {
+                progressStr = $"{executor.job.Progress} % ".PadLeft(progressWidth);
+            }
+            else if (throbberStatuses.Contains(executor.job.Status))
+            {
+                progressStr = StatusThrobberFrames[StatusThrobberIndex % StatusThrobberFrames.Length].PadLeft(progressWidth);
+                StatusThrobberIndex++;
+            }
+            string statusName = executor.job.Status switch
+            {
+                Tasks.QueueItemStatus.InProgress => "In Progress",
+                Tasks.QueueItemStatus.CommsFailure => "Comms Failure",
+                Tasks.QueueItemStatus.VerificationFailure => "Verification Failure",
+                Tasks.QueueItemStatus.WaitingForSubmission => "Submitting",
+                Tasks.QueueItemStatus.WaitingToStart => "Waiting To Start",
+                _ => executor.job.Status.ToString()
+            };
+            string statusStr = statusName.PadRight(statusWidth);
+            string statusAndPercentageStr = statusStr + progressStr;
+            if (statusAndPercentageStr.Length > statusAndProgressWidth) statusAndPercentageStr = statusAndPercentageStr.Substring(0, statusAndProgressWidth);
 
             // Choose color based on status
             string statusColor = executor.job.Status switch
@@ -466,34 +551,27 @@ namespace hasheous_taskrunner.Classes.Helpers
                 _ => "\x1b[37m"                                   // White fallback
             };
 
-            _directOutput.Write(statusColor);
-            _directOutput.Write(statusStr);
+            rowContent += statusColor;
+            // Highlight in-progress tasks with progress > 0 by reversing the colours turning the status string into a progress bar
+            if (executor.job.Progress > 0 && executor.job.Status == Tasks.QueueItemStatus.InProgress)
+            {
+                int filledWidth = (int)(executor.job.Progress / 100.0 * statusAndProgressWidth);
+                statusAndPercentageStr = "\x1b[7m" + statusAndPercentageStr.Substring(0, filledWidth) + "\x1b[27m" + statusAndPercentageStr.Substring(filledWidth);
+            }
+            rowContent += statusAndPercentageStr;
+
+            rowContent += "\x1b[90m "; // Reset color after status and progress bar
 
             // Task Type (green)
-            _directOutput.Write("\x1b[32m");
-            int taskNameWidth = width - (2 + taskIdWidth + statusWidth + 2);
-            string taskType = executor.job.TaskName.ToString().PadRight(taskNameWidth);
-            if (taskType.Length > taskNameWidth) taskType = taskType.Substring(0, taskNameWidth - 3) + "...";
-            _directOutput.Write(taskType);
+            rowContent += "\x1b[32m";
+            int taskNameWidth = paneContentWidth - (2 + taskIdWidth + statusAndProgressWidth + 2 + 10);
+            string taskType = executor.job.TaskName.ToString();
+            if (taskType.Length > taskNameWidth) taskType = taskType.Substring(0, taskNameWidth - 4) + "...";
+            rowContent += taskType;
 
-            // string statusSummary = executor.CurrentStatus.LastOrDefault()?.Message ?? "";
-            // int availableWidth = width - 45;  // Adjusted for status field
-            // if (statusSummary.Length > availableWidth)
-            // {
-            //     statusSummary = statusSummary.Substring(0, availableWidth - 3) + "...";
-            // }
+            rowContent += "\x1b[90m"; // Reset color after task type
 
-            _directOutput.Write("\x1b[90m");
-            // _directOutput.Write(statusSummary);
-
-            int usedWidth = 2 + taskIdWidth + statusWidth + taskNameWidth; // + statusSummary.Length;
-            int padding = width - usedWidth - 2;
-            if (padding > 0)
-            {
-                _directOutput.Write(new string(' ', padding));
-            }
-
-            _directOutput.WriteLine(" \x1b[36m║\x1b[0m");
+            return rowContent;
         }
 
         private static void DrawTaskStatusLine(int width, StatusUpdate.StatusItem status)

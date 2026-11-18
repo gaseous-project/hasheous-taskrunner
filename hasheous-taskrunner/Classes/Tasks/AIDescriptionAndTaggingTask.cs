@@ -153,6 +153,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 { "prompt", parameters != null && parameters.ContainsKey("prompt_description") ? parameters["prompt_description"] : "" },
                 { "embeddings", sources }
             }, statusUpdate);
+            statusUpdate.SetProgress(50);
 
             var tagsResult = await ai.ExecuteAsync(new Dictionary<string, object>
             {
@@ -161,6 +162,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 { "embeddings", sources },
                 { "isTagGeneration", "true" }
             }, statusUpdate);
+            statusUpdate.SetProgress(100);
 
             Dictionary<string, object> response = new Dictionary<string, object>();
             if (descriptionResult == null || tagsResult == null)

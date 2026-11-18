@@ -293,7 +293,28 @@ namespace hasheous_taskrunner.Classes.Communication
                             break;
 
                         case QueueItemStatus.InProgress:
-                            // task is currently in progress, so we just wait for it to complete
+                            // task is currently in progress, send a status report if it's been more than 1 minute since the last report
+                            if (executor.job.LastStatusReportAt == null)
+                                executor.job.LastStatusReportAt = DateTime.MinValue;
+                            if (DateTime.UtcNow - executor.job.LastStatusReportAt > TimeSpan.FromMinutes(1))
+                            {
+                                ResponsePayload InProgressPayload = ResponsePayload.Create(
+                                QueueItemStatus.InProgress,
+                                result: executor.ExecutionResult.ContainsKey(ResponseResultKey) ? executor.ExecutionResult[ResponseResultKey] : null,
+                                errorMessage: executor.ExecutionResult.ContainsKey(ErrorResultKey) ? executor.ExecutionResult[ErrorResultKey] : null,
+                                taskId: executor.job.Id);
+
+                                try
+                                {
+                                    await Common.Post<object>(acknowledgeUrl, InProgressPayload);
+                                    executor.job.LastStatusReportAt = DateTime.UtcNow;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // comms failed, but no reason to stop the task execution - just log the error and continue
+                                    Console.WriteLine($"Status report failed for task ID {executor.job.Id}: {ex.Message}");
+                                }
+                            }
                             break;
 
                         default:

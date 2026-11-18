@@ -350,7 +350,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     }
 
                     // Compute embeddings
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Computing embeddings for RAG...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Computing embeddings...");
                     var docEmbeddings = new List<double[]>();
                     int docIndex = 1;
                     foreach (var text in embeddingTexts)
@@ -385,7 +385,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         ? BuildRagPromptForTags(prompt, topKResults)
                         : BuildRagPromptForSummary(prompt, topKResults);
 
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response with RAG prompt...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
                     var genBody = new
                     {
                         model = model,
@@ -421,7 +421,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 }
                 else
                 {
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response without RAG...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
                     // Direct generation without chunking
                     var genBody = new
                     {

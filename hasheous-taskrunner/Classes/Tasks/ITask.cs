@@ -83,6 +83,35 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// </summary>
         public Dictionary<string, string>? Parameters { get; set; }
 
+        private int _progress = 0;
+
+        /// <summary>
+        /// Gets or sets the progress of the task as a percentage.
+        /// </summary>
+        public int Progress
+        {
+            get
+            {
+                switch (Status)
+                {
+                    case QueueItemStatus.InProgress:
+                    case QueueItemStatus.Verifying:
+                        return _progress;
+                    case QueueItemStatus.Submitted:
+                    case QueueItemStatus.Completed:
+                        return 100;
+                    case QueueItemStatus.Pending:
+                    case QueueItemStatus.Assigned:
+                    case QueueItemStatus.Failed:
+                    case QueueItemStatus.Cancelled:
+                        return 0;
+                    default:
+                        return _progress;
+                }
+            }
+            set => _progress = Math.Clamp(value, 0, 100);
+        }
+
         /// <summary>
         /// Gets or sets the result of the task, if available.
         /// </summary>
@@ -102,6 +131,13 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// Gets or sets the date and time when the task was completed, if available.
         /// </summary>
         public DateTime? CompletedAt { get; set; }
+
+        /// <summary>
+        /// Gets or sets the date and time when the last status report was sent for the task.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
+        public DateTime? LastStatusReportAt { get; set; }
     }
 
     /// <summary>

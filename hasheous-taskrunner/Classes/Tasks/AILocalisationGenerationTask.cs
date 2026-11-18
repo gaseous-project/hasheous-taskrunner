@@ -115,8 +115,16 @@ namespace hasheous_taskrunner.Classes.Tasks
 
             // loop through all of the Translations in the english base language and compare with the variant - force translation if the date on the english translation is newer than the variant, or the translation doesn't exist in the variant
             string model = GetRecommendedModel(targetCulture.Name);
+            int translationCount = 0;
             foreach (var kvp in enLocalisationItem.Translations)
             {
+                translationCount++;
+
+                // Update progress - this allows tracking of task completion percentage
+                int progressPercentage = (int)((double)translationCount / enLocalisationItem.Translations.Count * 100);
+                if (progressPercentage > 100) progressPercentage = 100;
+                statusUpdate.SetProgress(progressPercentage);
+
                 if ((!targetLocalisationItem.Translations.ContainsKey(kvp.Key) || kvp.Value.UpdatedAt > targetLocalisationItem.Translations[kvp.Key].UpdatedAt) && !string.IsNullOrWhiteSpace(kvp.Value.Value))
                 {
                     // begin translation

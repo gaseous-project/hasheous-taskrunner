@@ -15,6 +15,29 @@ namespace hasheous_taskrunner.Classes.Communication
         private ITask? handler { get; set; } = null;
 
         /// <summary>
+        /// Gets the current progress of the task execution as a percentage. This value is updated during the execution of the task to reflect its completion status.
+        /// </summary>
+        public int Progress
+        {
+            get => job.Progress;
+            set => job.Progress = value;
+        }
+
+        /// <summary>
+        /// Sets the progress of the task execution. This method updates the internal progress value which is reflected in the task's status.
+        /// </summary>
+        /// <param name="progress">The progress percentage (0-100).</param>
+        public override void SetProgress(int progress)
+        {
+            // Ensure progress is within valid range
+            if (progress < 0) progress = 0;
+            if (progress > 100) progress = 100;
+
+            // Update the job's progress directly since Progress property is tied to job.Progress
+            job.Progress = progress;
+        }
+
+        /// <summary>
         /// Gets the result of the task verification process. This property holds the outcome of the verification step, which determines whether the task is valid and can be executed. The verification result includes a status indicating success or failure, as well as any relevant details or error messages that may assist in diagnosing issues with the task.
         /// </summary>
         public TaskVerificationResult VerificationResult { get; private set; } = new TaskVerificationResult
