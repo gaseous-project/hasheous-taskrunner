@@ -1,5 +1,6 @@
 using hasheous_taskrunner.Classes.Capabilities;
 using hasheous_taskrunner.Classes.Helpers;
+using static hasheous_taskrunner.Classes.Helpers.AITaskHelpers;
 
 namespace hasheous_taskrunner.Classes.Tasks
 {
@@ -174,166 +175,65 @@ namespace hasheous_taskrunner.Classes.Tasks
                 };
             }
 
-            if ((descriptionResult != null && descriptionResult.ContainsKey("result") && !(bool)descriptionResult["result"]) || (tagsResult != null && tagsResult.ContainsKey("result") && !(bool)tagsResult["result"]))
+            if (descriptionResult == null || tagsResult == null)
             {
-                response = new Dictionary<string, object>
+                const string noResponse = "No response from AI capability.";
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask: " + noResponse);
+                return new Dictionary<string, object>
                 {
                     { "result", false },
-                    { "error", descriptionResult.ContainsKey("error") ? descriptionResult["error"] : "Unknown error from AI capability." }
+                    { "error", noResponse }
                 };
-
-                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask: AI capability returned an error: " + (response.ContainsKey("error") ? response["error"] : "Unknown error."));
-                return response;
             }
 
-            // merge results
-            Dictionary<string, object> responseVars = new Dictionary<string, object>();
-            if (descriptionResult != null && descriptionResult.ContainsKey("result") && (bool)descriptionResult["result"])
+            bool descOk = descriptionResult.TryGetValue("result", out var d) && d is true;
+            bool tagsOk = tagsResult.TryGetValue("result", out var t) && t is true;
+
+            if (!descOk || !tagsOk)
             {
-                responseVars["description"] = descriptionResult.ContainsKey("response") ? descriptionResult["response"] : "";
-            }
-            else
-            {
-                responseVars["description"] = "";
-            }
-            if (tagsResult != null && tagsResult.ContainsKey("result") && (bool)tagsResult["result"])
-            {
-                responseVars["tags"] = tagsResult.ContainsKey("response") ? tagsResult["response"].ToString() : "";
-                responseVars["tags"] = ollamaPrune(responseVars["tags"].ToString());
-                // deserialise tags into a dictionary<string, string[]> if possible
-                try
+                var failed = !descOk ? descriptionResult : tagsResult;
+                object error = failed.TryGetValue("error", out var e) && e != null
+                    ? e
+                    : "Unknown error from AI capability.";
+
+                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask: AI capability returned an error: " + error);
+                return new Dictionary<string, object>
                 {
-                    var deserializedTags = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string[]>>(responseVars["tags"].ToString() ?? "");
-                    if (deserializedTags != null)
-                    {
-                        responseVars["tags"] = deserializedTags;
-                    }
-                }
-                catch
-                {
-                    // ignore deserialization errors
-                }
-            }
-            else
-            {
-                responseVars["tags"] = "";
-            }
-            response = new Dictionary<string, object>
-            {
-                { "result", true },
-                { "response", responseVars }
-            };
-
-            if (response.ContainsKey("result") && response["result"] is bool resultBool && resultBool)
-            {
-                // success
-                // ollama sometimes returns the response wrapped in markdown code blocks, so strip those if present
-                if (response.ContainsKey("response") && response["response"] is string respStr)
-                {
-                    respStr = respStr.Trim();
-                    if ((respStr.StartsWith("```") || respStr.StartsWith("```json")) && respStr.EndsWith("```"))
-                    {
-                        int firstLineEnd = respStr.IndexOf('\n');
-                        int lastLineStart = respStr.LastIndexOf("```");
-                        if (firstLineEnd >= 0 && lastLineStart > firstLineEnd)
-                        {
-                            respStr = respStr.Substring(firstLineEnd + 1, lastLineStart - firstLineEnd - 1).Trim();
-                        }
-                    }
-                    response["response"] = respStr;
-                }
-            }
-            else
-            {
-                // failure
-                response.Add("result", "");
-                response.Add("error", response.ContainsKey("error") ? response["error"] : "Unknown error from AI capability.");
+                    { "result", false },
+                    { "error", error }
+                };
             }
 
-            return await Task.FromResult(response ?? new Dictionary<string, object>());
-        }
+            // both succeeded, so merge
+            string description = descriptionResult.TryGetValue("response", out var dr) ? dr?.ToString() ?? "" : "";
 
-        private static int GetTotalPayloadChars(Dictionary<string, string> parameters)
-        {
-            int totalChars = 0;
-            foreach (var kvp in parameters)
-            {
-                totalChars += kvp.Key?.Length ?? 0;
-                totalChars += kvp.Value?.Length ?? 0;
-            }
+            string tagsRaw = tagsResult.TryGetValue("response", out var tr) ? tr?.ToString() ?? "" : "";
+            string tagsText = StripCodeFence(ollamaPrune(tagsRaw));
 
-            return totalChars;
-        }
-
-        private static List<string> ParseSourceIds(string sourcesValue)
-        {
-            if (string.IsNullOrWhiteSpace(sourcesValue))
-            {
-                return new List<string>();
-            }
-
-            return sourcesValue
-                .Split(';')
-                .Select(s => s.Trim())
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private string ollamaPrune(string input)
-        {
-            input = input.Trim();
-
-            // Look for markdown code blocks anywhere in the text
-            int codeBlockStart = input.IndexOf("```");
-            if (codeBlockStart >= 0)
-            {
-                // Skip past the opening ``` and optional language identifier (e.g., ```json)
-                int firstLineEnd = input.IndexOf('\n', codeBlockStart);
-                if (firstLineEnd < 0) return input; // malformed, return as-is
-
-                // Find the closing ```
-                int codeBlockEnd = input.IndexOf("```", firstLineEnd + 1);
-                if (codeBlockEnd < 0) return input; // malformed, return as-is
-
-                // Extract content between markers
-                input = input.Substring(firstLineEnd + 1, codeBlockEnd - firstLineEnd - 1).Trim();
-            }
-
-            // Validate JSON
+            object tags = tagsText;
             try
             {
-                using (var doc = System.Text.Json.JsonDocument.Parse(input))
+                var deserializedTags = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string[]>>(tagsText);
+                if (deserializedTags != null)
                 {
-                    // Valid JSON, return it
-                    return input;
+                    tags = deserializedTags;
                 }
             }
             catch (System.Text.Json.JsonException)
             {
-                // Invalid JSON - try to find JSON object boundaries
-                int jsonStart = input.IndexOf('{');
-                int jsonEnd = input.LastIndexOf('}');
-
-                if (jsonStart >= 0 && jsonEnd > jsonStart)
-                {
-                    string extracted = input.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                    try
-                    {
-                        using (var doc = System.Text.Json.JsonDocument.Parse(extracted))
-                        {
-                            return extracted;
-                        }
-                    }
-                    catch
-                    {
-                        // Still invalid, return original
-                        return input;
-                    }
-                }
+                // keep the raw string if it isn't valid JSON
             }
 
-            return input;
+            return new Dictionary<string, object>
+            {
+                { "result", true },
+                { "response", new Dictionary<string, object>
+                    {
+                        { "description", description },
+                        { "tags", tags }
+                    }
+                }
+            };
         }
     }
 }
