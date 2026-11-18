@@ -132,7 +132,7 @@ namespace hasheous_taskrunner.Classes.Tasks
 
                     string jsonEncodedValue = Newtonsoft.Json.JsonConvert.SerializeObject(kvp.Value.Value.ToString().Trim());
 
-                    string prompt = "You are a native " + targetCulture.EnglishName + " (" + targetCulture.Name + ") UI localisation editor. Evaluate the JSON-encoded UI string below for " + targetCulture.EnglishName + " usage.\n\nRules:\n- If spelling, vocabulary, or phrasing needs adaptation for en-AU, output ONLY the adapted string as a valid JSON string.\n- If the string is already natural and accurate for " + targetCulture.Name + ", output ONLY: \"NO_CHANGE\"\n- Preserve all HTML tags, Markdown syntax, and placeholders({var}, %s, %d) verbatim.\n- Do not include explanations, lists, or extra text.\n\n\n" + jsonEncodedValue;
+                    string prompt = "You are a native " + targetCulture.EnglishName + " (" + targetCulture.Name + ") UI localisation editor. Evaluate the JSON-encoded UI string below for " + targetCulture.EnglishName + " usage.\n\nRules:\n- If spelling, vocabulary, or phrasing needs adaptation for " + targetCulture.Name + ", output ONLY the adapted string as a valid JSON string.\n- If the string is already natural and accurate for " + targetCulture.Name + ", output ONLY: \"NO_CHANGE\"\n- Preserve all HTML tags, Markdown syntax, and placeholders({var}, %s, %d) verbatim.\n- Do not include explanations, lists, or extra text.\n\n\n" + jsonEncodedValue;
 
                     try
                     {
@@ -142,12 +142,12 @@ namespace hasheous_taskrunner.Classes.Tasks
                             { "prompt", prompt },
                         }, statusUpdate);
 
-                        if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()) && Tools.IsWithinSimilarityThreshold(kvp.Value.Value, translatedString["response"].ToString(), 0.80))
+                        if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()))
                         {
                             string translatedValue = Newtonsoft.Json.JsonConvert.DeserializeObject<string>(translatedString["response"]?.ToString()?.Trim() ?? "") ?? "";
                             bool aiTranslated = true;
 
-                            if (translatedValue == "NO_CHANGE" || translatedValue == kvp.Value.Value || string.IsNullOrWhiteSpace(translatedValue))
+                            if (translatedValue == "NO_CHANGE" || translatedValue == kvp.Value.Value || string.IsNullOrWhiteSpace(translatedValue) || Tools.IsWithinSimilarityThreshold(kvp.Value.Value, translatedValue, 0.80))
                             {
                                 translatedValue = kvp.Value.Value;
                                 aiTranslated = kvp.Value.AITranslated;
