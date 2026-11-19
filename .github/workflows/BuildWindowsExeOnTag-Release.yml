@@ -25,7 +25,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       
       - name: Install dotnet tool
         run: dotnet tool install -g dotnetCampus.TagToVersion
@@ -42,7 +42,7 @@ jobs:
       - name: Prepare artifact
         run: |
           $version = Get-Content build/Version.props | Select-String -Pattern '<Version>(.*?)</Version>' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-          $sourceExe = "hasheous-taskrunner/bin/Release/net8.0/win-${{ matrix.arch }}/publish/hasheous-taskrunner.exe"
+          $sourceExe = "hasheous-taskrunner/bin/Release/net10.0/win-${{ matrix.arch }}/publish/hasheous-taskrunner.exe"
           $destExe = "hasheous-taskrunner-windows-${version}-${{ matrix.arch }}.exe"
           Move-Item -Path $sourceExe -Destination $destExe
           Write-Host "Created artifact: $destExe"
@@ -61,7 +61,7 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          path: hasheous-taskrunner/bin/Release/net8.0/win-${{ matrix.arch }}/publish/
+          path: hasheous-taskrunner/bin/Release/net10.0/win-${{ matrix.arch }}/publish/
           artifact-name: sbom-windows-${{ matrix.arch }}.spdx.json
           output-file: sbom-windows-${{ matrix.arch }}.spdx.json
           format: spdx-json
