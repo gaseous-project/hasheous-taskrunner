@@ -19,6 +19,12 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <inheritdoc/>
         public bool RequiresExclusiveExecution => false;
 
+        // dictionary item key consts
+        private const string SourcesKey = "sources";
+        private const string ResultKey = "result";
+        private const string ErrorKey = "error";
+        private const string ResponseKey = "response";
+
         /// <inheritdoc/>
         public async Task<TaskVerificationResult> VerifyAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
         {
@@ -43,13 +49,13 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             // Require sources key for RAG-style AI task payload compatibility.
-            if (!parameters.ContainsKey("sources"))
+            if (!parameters.ContainsKey(SourcesKey))
             {
-                verificationResults.Details["sources"] = "Missing required parameter: sources";
+                verificationResults.Details[SourcesKey] = "Missing required parameter: sources";
             }
             else
             {
-                var sourceIds = ParseSourceIds(parameters["sources"]);
+                var sourceIds = ParseSourceIds(parameters[SourcesKey]);
 
                 if (sourceIds.Count > MaxSourceCount)
                 {
@@ -98,8 +104,8 @@ namespace hasheous_taskrunner.Classes.Tasks
             {
                 return new Dictionary<string, object>
                 {
-                    { "result", false },
-                    { "error", "Parameters cannot be null." }
+                    { ResultKey, false },
+                    { ErrorKey, "Parameters cannot be null." }
                 };
             }
 
@@ -110,8 +116,8 @@ namespace hasheous_taskrunner.Classes.Tasks
                 statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask verification failed before execution: " + verificationError);
                 return new Dictionary<string, object>
                 {
-                    { "result", false },
-                    { "error", "Verification failed: " + verificationError }
+                    { ResultKey, false },
+                    { ErrorKey, "Verification failed: " + verificationError }
                 };
             }
 
@@ -124,7 +130,7 @@ namespace hasheous_taskrunner.Classes.Tasks
 
             // get sources from parameters
             List<string> sources = new List<string>();
-            foreach (string sourceKey in ParseSourceIds(parameters["sources"]))
+            foreach (string sourceKey in ParseSourceIds(parameters[SourcesKey]))
             {
                 string paramKey = "Source_" + sourceKey;
                 if (parameters.ContainsKey(paramKey))
@@ -133,7 +139,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 }
             }
 
-            // override model to use ollama
+            // override model to use ollama - note: these overrides are for testing only and should not be used in production
             string modelDescriptionOverride = "gemma3:12b";
             string modelTagOverride = "qwen3:8b";
             bool applyDescriptionOverride = false;
@@ -165,49 +171,39 @@ namespace hasheous_taskrunner.Classes.Tasks
             }, statusUpdate);
             statusUpdate.SetProgress(100);
 
-            Dictionary<string, object> response = new Dictionary<string, object>();
-            if (descriptionResult == null || tagsResult == null)
-            {
-                response = new Dictionary<string, object>
-                {
-                    { "result", false },
-                    { "error", "No response from AI capability." }
-                };
-            }
-
             if (descriptionResult == null || tagsResult == null)
             {
                 const string noResponse = "No response from AI capability.";
                 statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask: " + noResponse);
                 return new Dictionary<string, object>
                 {
-                    { "result", false },
-                    { "error", noResponse }
+                    { ResultKey, false },
+                    { ErrorKey, noResponse }
                 };
             }
 
-            bool descOk = descriptionResult.TryGetValue("result", out var d) && d is true;
-            bool tagsOk = tagsResult.TryGetValue("result", out var t) && t is true;
+            bool descOk = descriptionResult.TryGetValue(ResultKey, out var d) && d is true;
+            bool tagsOk = tagsResult.TryGetValue(ResultKey, out var t) && t is true;
 
             if (!descOk || !tagsOk)
             {
                 var failed = !descOk ? descriptionResult : tagsResult;
-                object error = failed.TryGetValue("error", out var e) && e != null
+                object error = failed.TryGetValue(ErrorKey, out var e) && e != null
                     ? e
                     : "Unknown error from AI capability.";
 
                 statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AIDescriptionAndTaggingTask: AI capability returned an error: " + error);
                 return new Dictionary<string, object>
                 {
-                    { "result", false },
-                    { "error", error }
+                    { ResultKey, false },
+                    { ErrorKey, error }
                 };
             }
 
             // both succeeded, so merge
-            string description = descriptionResult.TryGetValue("response", out var dr) ? dr?.ToString() ?? "" : "";
+            string description = descriptionResult.TryGetValue(ResponseKey, out var dr) ? dr?.ToString() ?? "" : "";
 
-            string tagsRaw = tagsResult.TryGetValue("response", out var tr) ? tr?.ToString() ?? "" : "";
+            string tagsRaw = tagsResult.TryGetValue(ResponseKey, out var tr) ? tr?.ToString() ?? "" : "";
             string tagsText = StripCodeFence(ollamaPrune(tagsRaw));
 
             object tags = tagsText;
@@ -226,8 +222,8 @@ namespace hasheous_taskrunner.Classes.Tasks
 
             return new Dictionary<string, object>
             {
-                { "result", true },
-                { "response", new Dictionary<string, object>
+                { ResultKey, true },
+                { ResponseKey, new Dictionary<string, object>
                     {
                         { "description", description },
                         { "tags", tags }

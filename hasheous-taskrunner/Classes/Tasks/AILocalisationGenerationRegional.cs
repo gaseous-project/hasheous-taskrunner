@@ -11,15 +11,17 @@ namespace hasheous_taskrunner.Classes.Tasks
     /// </summary>
     public class AILocalisationGenerationRegionalTask : ITask
     {
-        private const int MaxSourceCount = 25;
-        private const int MaxSourceItemChars = 100_000;
-        private const int MaxTotalPayloadChars = 1_000_000;
-
         /// <inheritdoc/>
         public TaskType TaskType => TaskType.AILocalisationGenerationRegional;
 
         /// <inheritdoc/>
         public bool RequiresExclusiveExecution => true;
+
+        // dictionary item key consts
+        private const string LanguageKey = "language";
+        private const string ResultKey = "result";
+        private const string ErrorKey = "error";
+        private const string ResponseKey = "response";
 
         /// <inheritdoc/>
         public async Task<TaskVerificationResult> VerifyAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
@@ -34,21 +36,16 @@ namespace hasheous_taskrunner.Classes.Tasks
                 return await Task.FromResult(verificationResults);
             }
 
-            if (!parameters.ContainsKey("language"))
+            if (!parameters.ContainsKey(LanguageKey))
             {
-                verificationResults.Details["language"] = "Missing required parameter: language";
+                verificationResults.Details[LanguageKey] = "Missing required parameter: language";
             }
-
-            // language must be a valid two character ISO language code - check against cultureinfo
-            if (parameters.ContainsKey("language"))
+            else
             {
-                try
+                // language must be a valid two character ISO language code - check against cultureinfo
+                if (!parameters.TryGetValue(LanguageKey, out var lang) || !ValidCultures.Contains(lang))
                 {
-                    var culture = CultureInfo.GetCultureInfo(parameters["language"]);
-                }
-                catch (CultureNotFoundException)
-                {
-                    verificationResults.Details["language"] = "Invalid language code: " + parameters["language"];
+                    verificationResults.Details[LanguageKey] = $"Invalid language code: {lang}";
                 }
             }
 
@@ -70,8 +67,8 @@ namespace hasheous_taskrunner.Classes.Tasks
                 statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Error, "AILocalisationGenerationRegionalTask verification failed before execution: " + verificationError);
                 return new Dictionary<string, object>
                 {
-                    { "result", false },
-                    { "error", "Verification failed: " + verificationError }
+                    { ResultKey, false },
+                    { ErrorKey, "Verification failed: " + verificationError }
                 };
             }
 
@@ -83,7 +80,7 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             // download the base language to to localise from the server
-            var targetCulture = CultureInfo.GetCultureInfo(parameters["language"]);
+            var targetCulture = CultureInfo.GetCultureInfo(parameters[LanguageKey]);
             var enLocalisationItem = await Communication.Common.Get<LocalisationItem>($"/localisation/{targetCulture.TwoLetterISOLanguageName}.json");
             if (enLocalisationItem == null)
             {
@@ -143,9 +140,9 @@ namespace hasheous_taskrunner.Classes.Tasks
                             { "prompt", prompt },
                         }, statusUpdate);
 
-                        if (translatedString != null && translatedString.ContainsKey("response") && !string.IsNullOrWhiteSpace(translatedString["response"].ToString()))
+                        if (translatedString != null && translatedString.ContainsKey(ResponseKey) && !string.IsNullOrWhiteSpace(translatedString[ResponseKey].ToString()))
                         {
-                            string translatedValue = Newtonsoft.Json.JsonConvert.DeserializeObject<string>(translatedString["response"]?.ToString()?.Trim() ?? "") ?? "";
+                            string translatedValue = Newtonsoft.Json.JsonConvert.DeserializeObject<string>(translatedString[ResponseKey]?.ToString()?.Trim() ?? "") ?? "";
                             bool aiTranslated = true;
 
                             if (translatedValue == "NO_CHANGE" || translatedValue == kvp.Value.Value || string.IsNullOrWhiteSpace(translatedValue) || Tools.IsWithinSimilarityThreshold(kvp.Value.Value, translatedValue, 0.80))
@@ -183,18 +180,17 @@ namespace hasheous_taskrunner.Classes.Tasks
 
             responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);
 
-            Dictionary<string, object> response = new Dictionary<string, object>();
-            response = new Dictionary<string, object>
+            Dictionary<string, object> response = new Dictionary<string, object>
             {
-                { "result", true },
-                { "response", responseVars }
+                { ResultKey, true },
+                { ResponseKey, responseVars }
             };
 
-            if (response.ContainsKey("result") && response["result"] is bool resultBool && resultBool)
+            if (response.ContainsKey(ResultKey) && response[ResultKey] is bool resultBool && resultBool)
             {
                 // success
                 // ollama sometimes returns the response wrapped in markdown code blocks, so strip those if present
-                if (response.ContainsKey("response") && response["response"] is string respStr)
+                if (response.ContainsKey(ResponseKey) && response[ResponseKey] is string respStr)
                 {
                     respStr = respStr.Trim();
                     if ((respStr.StartsWith("```") || respStr.StartsWith("```json")) && respStr.EndsWith("```"))
@@ -206,17 +202,17 @@ namespace hasheous_taskrunner.Classes.Tasks
                             respStr = respStr.Substring(firstLineEnd + 1, lastLineStart - firstLineEnd - 1).Trim();
                         }
                     }
-                    response["response"] = respStr;
+                    response[ResponseKey] = respStr;
                 }
             }
             else
             {
                 // failure
-                response.Add("result", "");
-                response.Add("error", response.ContainsKey("error") ? response["error"] : "Unknown error from AI capability.");
+                response.Add(ResultKey, "");
+                response.Add(ErrorKey, response.ContainsKey(ErrorKey) ? response[ErrorKey] : "Unknown error from AI capability.");
             }
 
-            return await Task.FromResult(response ?? new Dictionary<string, object>());
+            return response;
         }
 
         private static string GetRecommendedModel(string localeCode)

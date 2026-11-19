@@ -4,6 +4,10 @@ namespace hasheous_taskrunner.Classes.Helpers
 {
     public static class AITaskHelpers
     {
+        public static readonly HashSet<string> ValidCultures = new(
+            CultureInfo.GetCultures(CultureTypes.AllCultures).Select(c => c.Name),
+            StringComparer.OrdinalIgnoreCase);
+
         public static int GetTotalPayloadChars(Dictionary<string, string> parameters)
         {
             int totalChars = 0;
