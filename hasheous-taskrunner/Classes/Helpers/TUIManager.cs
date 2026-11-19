@@ -125,7 +125,7 @@ namespace hasheous_taskrunner.Classes.Helpers
         /// <summary>
         /// Renders the TUI to the console.
         /// </summary>
-        public static void Render()
+        public static void Render(CancellationTokenSource cancellationToken)
         {
             lock (_lock)
             {
@@ -136,6 +136,19 @@ namespace hasheous_taskrunner.Classes.Helpers
                         Initialize();
                     }
 
+                    cancellationToken.Token.ThrowIfCancellationRequested();
+
+                    // read the keyboard input and handle it accordingly
+                    if (Console.KeyAvailable)
+                    {
+                        var key = Console.ReadKey(intercept: true);
+                        if (key.KeyChar == 'q' || key.KeyChar == 'Q')
+                        {
+                            cancellationToken.Cancel();
+                        }
+                    }
+
+                    // initialize cursor visibility and terminal dimensions
                     Console.CursorVisible = false;
 
                     int width = Console.WindowWidth;
@@ -282,12 +295,14 @@ namespace hasheous_taskrunner.Classes.Helpers
 
             string leftInfo = $" Tasks: {activeTasks.Count}/{Communication.Tasks.MaxConcurrentTasks} ";
 
+            string quitMessage = " Press q to quit ══";
+
             // Get capabilities
             var capabilities = GetCapabilitiesString();
             string rightInfo = $" Capabilities: {capabilities} ";
 
             // Calculate padding
-            int padding = width - leftInfo.Length - rightInfo.Length - 2;
+            int padding = width - leftInfo.Length - quitMessage.Length - rightInfo.Length - 2;
             if (padding < 0)
             {
                 // Truncate capabilities if needed
@@ -309,6 +324,7 @@ namespace hasheous_taskrunner.Classes.Helpers
             _directOutput.Write("\x1b[36m╚");
             _directOutput.Write(leftInfo);
             _directOutput.Write(new string('═', padding));
+            _directOutput.Write(quitMessage);
             _directOutput.Write(rightInfo);
             _directOutput.Write("╝\x1b[0m");
         }
