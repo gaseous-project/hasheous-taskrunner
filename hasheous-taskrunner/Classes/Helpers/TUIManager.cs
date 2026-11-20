@@ -519,8 +519,8 @@ namespace hasheous_taskrunner.Classes.Helpers
 
             // Task ID (cyan)
             int taskIdWidth = 10;
-            string taskIdStr = $"#{taskId}";
-            rowContent += taskIdStr.PadRight(taskIdWidth);
+            string taskIdStr = $"\e[1m#{taskId}\e[22m";
+            rowContent += taskIdStr + "".PadRight(taskIdWidth);
 
             // Task Status (colored by status)
             int statusWidth = 20;
@@ -582,6 +582,8 @@ namespace hasheous_taskrunner.Classes.Helpers
             rowContent += "\x1b[32m";
             int taskNameWidth = paneContentWidth - (2 + taskIdWidth + statusAndProgressWidth + 2 + 10);
             string taskType = executor.job.TaskName.ToString();
+            if (!String.IsNullOrEmpty(executor.job.Description))
+                taskType = executor.job.Description;
             if (taskType.Length > taskNameWidth) taskType = taskType.Substring(0, taskNameWidth - 4) + "...";
             rowContent += taskType;
 

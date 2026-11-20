@@ -139,6 +139,9 @@ namespace hasheous_taskrunner.Classes.Tasks
                 }
             }
 
+            // set the description for the current task execution
+            statusUpdate.SetDescription("AI Description and Tagging");
+
             // override model to use ollama - note: these overrides are for testing only and should not be used in production
             string modelDescriptionOverride = "gemma3:12b";
             string modelTagOverride = "qwen3:8b";

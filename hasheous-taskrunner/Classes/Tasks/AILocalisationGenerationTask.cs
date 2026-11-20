@@ -80,14 +80,17 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             // download the base language to translate from the server - this is always en
+            var targetCulture = CultureInfo.GetCultureInfo(parameters[LanguageKey]);
             var enLocalisationItem = await Communication.Common.Get<LocalisationItem>("/localisation/en.json");
             if (enLocalisationItem == null)
             {
                 throw new InvalidOperationException($"Failed to download base language content for en");
             }
 
+            // set the description for the current task execution
+            statusUpdate.SetDescription("AI Localisation Generation: " + targetCulture.EnglishName);
+
             // pull from the server first to compare each string with the base language content (each string has a last updated value)
-            var targetCulture = CultureInfo.GetCultureInfo(parameters[LanguageKey]);
             LocalisationItem? targetLocalisationItem;
             try
             {
@@ -123,7 +126,30 @@ namespace hasheous_taskrunner.Classes.Tasks
                 if (progressPercentage > 100) progressPercentage = 100;
                 statusUpdate.SetProgress(progressPercentage);
 
-                if ((!targetLocalisationItem.Translations.ContainsKey(kvp.Key) || kvp.Value.UpdatedAt > targetLocalisationItem.Translations[kvp.Key].UpdatedAt) && !string.IsNullOrWhiteSpace(kvp.Value.Value))
+                bool performTranslation = false;
+
+                // abort early if the string is empty or null
+                if (string.IsNullOrWhiteSpace(kvp.Value.Value))
+                {
+                    performTranslation = true;
+                }
+
+                // check if the translation is missing in the target localisation item
+                if (!targetLocalisationItem.Translations.ContainsKey(kvp.Key))
+                {
+                    performTranslation = true;
+                }
+
+                // check if the English translation is newer than the target translation
+                if (targetLocalisationItem.Translations.ContainsKey(kvp.Key))
+                {
+                    if (kvp.Value.UpdatedAt > targetLocalisationItem.Translations[kvp.Key].UpdatedAt)
+                    {
+                        performTranslation = true;
+                    }
+                }
+
+                if (performTranslation)
                 {
                     // begin translation
                     statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Translating " + kvp.Key + " for language " + targetCulture.EnglishName);

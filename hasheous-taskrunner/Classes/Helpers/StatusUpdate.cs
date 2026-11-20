@@ -51,6 +51,16 @@ namespace hasheous_taskrunner.Classes.Helpers
         }
 
         /// <summary>
+        /// Sets the description for the current task execution. This method allows for providing additional context or details about the task's progress or state.
+        /// </summary>
+        /// <param name="description">The description providing additional context or details about the task's progress or state.</param>
+        public virtual void SetDescription(string description)
+        {
+            // This method can be overridden by derived classes to provide specific description handling
+            // For now, it's a placeholder that can be extended in subclasses if needed
+        }
+
+        /// <summary>
         /// Represents the type of status update for a task. This enumeration is used to categorize status updates as informational, warnings, or errors, allowing for better tracking and reporting of the task's execution status.
         /// </summary>
         public class StatusItem

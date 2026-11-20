@@ -113,6 +113,11 @@ namespace hasheous_taskrunner.Classes.Tasks
         }
 
         /// <summary>
+        /// Gets or sets the description for the current task execution.
+        /// </summary>
+        public string? Description { get; set; }
+
+        /// <summary>
         /// Gets or sets the result of the task, if available.
         /// </summary>
         public string? Result { get; set; }

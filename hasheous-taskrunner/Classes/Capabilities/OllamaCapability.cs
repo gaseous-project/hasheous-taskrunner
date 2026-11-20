@@ -385,7 +385,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         ? BuildRagPromptForTags(prompt, topKResults)
                         : BuildRagPromptForSummary(prompt, topKResults);
 
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
+                    // statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
                     var genBody = new
                     {
                         model = model,
@@ -421,7 +421,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 }
                 else
                 {
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
+                    // statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
                     // Direct generation without chunking
                     var genBody = new
                     {

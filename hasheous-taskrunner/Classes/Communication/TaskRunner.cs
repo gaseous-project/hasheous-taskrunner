@@ -38,6 +38,16 @@ namespace hasheous_taskrunner.Classes.Communication
         }
 
         /// <summary>
+        /// Sets the description for the current task execution. This method updates both the internal description and the job's description property.
+        /// </summary>
+        /// <param name="description">The description providing additional context or details about the task's progress or state.</param>
+        public override void SetDescription(string description)
+        {
+            base.SetDescription(description);
+            job.Description = description;
+        }
+
+        /// <summary>
         /// Gets the result of the task verification process. This property holds the outcome of the verification step, which determines whether the task is valid and can be executed. The verification result includes a status indicating success or failure, as well as any relevant details or error messages that may assist in diagnosing issues with the task.
         /// </summary>
         public TaskVerificationResult VerificationResult { get; private set; } = new TaskVerificationResult
