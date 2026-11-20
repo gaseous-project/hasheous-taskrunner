@@ -470,7 +470,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         elapsedUnits = "min";
                     }
                 }
-                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
+                // statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
 
                 result["result"] = true;
                 result["response"] = responseText ?? string.Empty;
