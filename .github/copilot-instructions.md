@@ -93,6 +93,12 @@ Mode-specific behavior:
 - Add an allowlist guard for sensitive headers so they are only attached when request URI matches configured host origin.
 - Include tests that verify host auth headers are absent from Ollama and other external service requests.
 
+### 7) Single Host Client Rule
+
+- All communication with the Hasheous server (JSON APIs, language files, any other host resource) must go through `HostApiClient` (via `Common`). Do not create ad hoc `HttpClient` instances for host requests.
+- Ollama keeps its own `OllamaClient`; the updater keeps its own client for GitHub.
+- If `HostApiClient` lacks a capability (for example raw string/bytes responses or cancellation tokens), extend it rather than bypassing it.
+
 ## Deferred Items
 
 - OS-native secure secret storage migration.

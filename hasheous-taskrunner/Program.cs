@@ -105,7 +105,7 @@ if (hasheous_taskrunner.Classes.Communication.Common.IsRegistered())
             {
                 try
                 {
-                    TUIManager.Render();
+                    TUIManager.Render(cts);
                     await Task.Delay(1000, cts.Token);
                 }
                 catch (OperationCanceledException)

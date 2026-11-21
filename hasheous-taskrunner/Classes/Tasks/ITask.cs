@@ -14,6 +14,13 @@ namespace hasheous_taskrunner.Classes.Tasks
         public TaskType TaskType { get; }
 
         /// <summary>
+        /// Gets a value indicating whether this task type requires exclusive execution.
+        /// When true, only one task of this type can run at a time, and no other tasks can run concurrently.
+        /// When false (default), multiple tasks may run concurrently based on capability compatibility.
+        /// </summary>
+        public bool RequiresExclusiveExecution => false;
+
+        /// <summary>
         /// Verifies the task parameters asynchronously.
         /// </summary>
         /// <param name="parameters">A dictionary of parameters required for task verification.</param>
@@ -76,6 +83,40 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// </summary>
         public Dictionary<string, string>? Parameters { get; set; }
 
+        private int _progress = 0;
+
+        /// <summary>
+        /// Gets or sets the progress of the task as a percentage.
+        /// </summary>
+        public int Progress
+        {
+            get
+            {
+                switch (Status)
+                {
+                    case QueueItemStatus.InProgress:
+                    case QueueItemStatus.Verifying:
+                        return _progress;
+                    case QueueItemStatus.Submitted:
+                    case QueueItemStatus.Completed:
+                        return 100;
+                    case QueueItemStatus.Pending:
+                    case QueueItemStatus.Assigned:
+                    case QueueItemStatus.Failed:
+                    case QueueItemStatus.Cancelled:
+                        return 0;
+                    default:
+                        return _progress;
+                }
+            }
+            set => _progress = Math.Clamp(value, 0, 100);
+        }
+
+        /// <summary>
+        /// Gets or sets the description for the current task execution.
+        /// </summary>
+        public string? Description { get; set; }
+
         /// <summary>
         /// Gets or sets the result of the task, if available.
         /// </summary>
@@ -95,6 +136,13 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// Gets or sets the date and time when the task was completed, if available.
         /// </summary>
         public DateTime? CompletedAt { get; set; }
+
+        /// <summary>
+        /// Gets or sets the date and time when the last status report was sent for the task.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        [Newtonsoft.Json.JsonIgnore]
+        public DateTime? LastStatusReportAt { get; set; }
     }
 
     /// <summary>
@@ -164,7 +212,14 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <summary>
         /// Task for AI description generation and tagging.
         /// </summary>
-        AIDescriptionAndTagging = 0
+        AIDescriptionAndTagging = 0,
+
+        /// <summary>
+        /// Task for AI localisation generation.
+        /// </summary>
+        AILocalisationGeneration = 10,
+
+        AILocalisationGenerationRegional = 20
     }
 
     /// <summary>

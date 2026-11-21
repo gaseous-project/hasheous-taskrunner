@@ -40,6 +40,9 @@ namespace hasheous_taskrunner.Classes.Capabilities
         public bool IsInternalCapability => true;
 
         /// <inheritdoc/>
+        public bool RequiresMutualExclusivity => true;
+
+        /// <inheritdoc/>
         public Dictionary<string, object>? Configuration
         {
             get
@@ -212,6 +215,18 @@ namespace hasheous_taskrunner.Classes.Capabilities
             string model = Configuration?["model"] as string ?? string.Empty;
             string prompt = Configuration?["prompt"] as string ?? string.Empty;
 
+            int predict = 256;
+            if (parameters.ContainsKey("predict"))
+            {
+                predict = Convert.ToInt32(parameters["predict"]);
+            }
+
+            double temperature = 0.2;
+            if (parameters.ContainsKey("temperature"))
+            {
+                temperature = Convert.ToDouble(parameters["temperature"]);
+            }
+
             // allow overriding via parameters
             if (parameters != null)
             {
@@ -347,7 +362,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     }
 
                     // Compute embeddings
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Computing embeddings for RAG...");
+                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Computing embeddings...");
                     var docEmbeddings = new List<double[]>();
                     int docIndex = 1;
                     foreach (var text in embeddingTexts)
@@ -369,8 +384,8 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     }
                     // Adjust parameters based on task type
                     int topK = isTagGeneration ? 10 : 5;
-                    int numPredict = isTagGeneration ? 512 : 256;
-                    double temperature = isTagGeneration ? 0.5 : 0.2;
+                    int numPredict = isTagGeneration ? 512 : predict;
+                    temperature = isTagGeneration ? 0.5 : temperature;
 
                     var topKResults = ranked
                         .OrderByDescending(r => r.score)
@@ -382,7 +397,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         ? BuildRagPromptForTags(prompt, topKResults)
                         : BuildRagPromptForSummary(prompt, topKResults);
 
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response with RAG prompt...");
+                    // statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
                     var genBody = new
                     {
                         model = model,
@@ -418,7 +433,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                 }
                 else
                 {
-                    statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response without RAG...");
+                    // statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Generating response...");
                     // Direct generation without chunking
                     var genBody = new
                     {
@@ -428,8 +443,8 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         think = false,
                         options = new
                         {
-                            num_predict = 256,
-                            temperature = 0.2
+                            num_predict = predict,
+                            temperature = temperature
                         }
                     };
                     var genResp = await client.PostAsync<Dictionary<string, object>>("/api/generate", genBody);
@@ -467,7 +482,7 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         elapsedUnits = "min";
                     }
                 }
-                statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
+                // statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, $"OllamaCapability: Generation completed in {elapsedTime} {elapsedUnits}.");
 
                 result["result"] = true;
                 result["response"] = responseText ?? string.Empty;

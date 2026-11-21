@@ -16,6 +16,14 @@ namespace hasheous_taskrunner.Classes.Capabilities
         public bool IsInternalCapability => false;
 
         /// <summary>
+        /// Indicates whether tasks requiring this capability must be mutually exclusive by type.
+        /// If true, tasks of different types cannot run concurrently if they both require this capability.
+        /// If false, tasks of different types can run concurrently even if they both require this capability.
+        /// Default is false for most capabilities; set to true only for resources with serialized access constraints.
+        /// </summary>
+        public bool RequiresMutualExclusivity => false;
+
+        /// <summary>
         /// Gets or sets the configuration dictionary for the capability.
         /// </summary>
         public Dictionary<string, object>? Configuration { get; set; }

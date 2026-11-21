@@ -26,7 +26,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       
       - name: Install dotnet tool
         run: dotnet tool install -g dotnetCampus.TagToVersion
@@ -43,7 +43,7 @@ jobs:
       - name: Prepare artifact
         run: |
           version=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' build/Version.props | head -1)
-          sourceExe="hasheous-taskrunner/bin/Release/net8.0/osx-${{ matrix.arch }}/publish/hasheous-taskrunner"
+          sourceExe="hasheous-taskrunner/bin/Release/net10.0/osx-${{ matrix.arch }}/publish/hasheous-taskrunner"
           destExe="hasheous-taskrunner-macos-${version}-${{ matrix.arch }}"
           mv "$sourceExe" "$destExe"
           chmod +x "$destExe"
@@ -61,7 +61,7 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          path: hasheous-taskrunner/bin/Release/net8.0/osx-${{ matrix.arch }}/publish/
+          path: hasheous-taskrunner/bin/Release/net10.0/osx-${{ matrix.arch }}/publish/
           artifact-name: sbom-macos-${{ matrix.arch }}.spdx.json
           output-file: sbom-macos-${{ matrix.arch }}.spdx.json
           format: spdx-json
