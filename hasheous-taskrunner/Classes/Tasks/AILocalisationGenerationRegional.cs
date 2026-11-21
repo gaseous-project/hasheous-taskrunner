@@ -95,6 +95,7 @@ namespace hasheous_taskrunner.Classes.Tasks
             try
             {
                 targetLocalisationItem = await Communication.Common.Get<LocalisationItem>($"/localisation/{targetCulture.Name}.json");
+                targetLocalisationItem.Version = enLocalisationItem.Version;
             }
             catch (HttpRequestException ex)
             {
@@ -191,17 +192,17 @@ namespace hasheous_taskrunner.Classes.Tasks
                         statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Warning, "OllamaCapability: Error localising " + kvp.Key + " with exception: " + Newtonsoft.Json.JsonConvert.SerializeObject(ex));
                     }
                 }
-                else
-                {
-                    // insert dummy key - this is to prevent missing translations in the target localisation item from causing issues
-                    targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
-                    {
-                        Value = kvp.Value.Value,
-                        AITranslated = kvp.Value.AITranslated,
-                        CreatedAt = kvp.Value.CreatedAt,
-                        UpdatedAt = kvp.Value.UpdatedAt
-                    };
-                }
+                // else
+                // {
+                //     // insert dummy key - this is to prevent missing translations in the target localisation item from causing issues
+                //     targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
+                //     {
+                //         Value = kvp.Value.Value,
+                //         AITranslated = kvp.Value.AITranslated,
+                //         CreatedAt = kvp.Value.CreatedAt,
+                //         UpdatedAt = kvp.Value.UpdatedAt
+                //     };
+                // }
             }
 
             responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);

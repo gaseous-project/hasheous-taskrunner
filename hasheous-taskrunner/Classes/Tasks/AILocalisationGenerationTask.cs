@@ -95,6 +95,7 @@ namespace hasheous_taskrunner.Classes.Tasks
             try
             {
                 targetLocalisationItem = await Communication.Common.Get<LocalisationItem>($"/localisation/{targetCulture.TwoLetterISOLanguageName}.json");
+                targetLocalisationItem.Version = enLocalisationItem.Version;
             }
             catch (HttpRequestException ex)
             {
@@ -153,7 +154,20 @@ namespace hasheous_taskrunner.Classes.Tasks
                 {
                     // begin translation
                     statusUpdate.AddStatus(StatusUpdate.StatusItem.StatusType.Info, "OllamaCapability: Translating " + kvp.Key + " for language " + targetCulture.EnglishName);
-                    string prompt = "Translate the following English (en) text to " + targetCulture.EnglishName + " (" + targetCulture.Name + "). Preserve all Markdown and HTML syntax, and keep variable placeholders like {var} or %s intact. Output ONLY the translated text and nothing else.\n\n\n" + kvp.Value.Value.ToString().Trim();
+                    // string prompt = "Translate the following English (en) text to " + targetCulture.EnglishName + " (" + targetCulture.Name + "). Preserve all Markdown and HTML syntax, and keep variable placeholders like {var} or %s intact. Output ONLY the translated text and nothing else.\n\n\n" + kvp.Value.Value.ToString().Trim();
+
+                    string targetLangName = targetCulture.Parent != CultureInfo.InvariantCulture
+                        ? targetCulture.Parent.EnglishName
+                        : targetCulture.EnglishName;
+                    string targetLangCode = targetCulture.TwoLetterISOLanguageName;
+
+                    string prompt = $"You are a professional English (en) to {targetLangName} ({targetLangCode}) translator. " +
+                                    $"Your goal is to accurately convey the meaning and nuances of the original English text " +
+                                    $"while adhering to {targetLangName} grammar, vocabulary, and cultural sensitivities. " +
+                                    $"Produce only the {targetLangName} translation, without any additional explanations or commentary. " +
+                                    $"Please translate the following English text into {targetLangName}:\n\n\n" +
+                                    $"{kvp.Value.Value}";
+
                     var translatedString = await ai.ExecuteAsync(new Dictionary<string, object>
                         {
                             { "model", model },
@@ -171,17 +185,17 @@ namespace hasheous_taskrunner.Classes.Tasks
                         };
                     }
                 }
-                else
-                {
-                    // insert dummy key - this is to prevent missing translations in the target localisation item from causing issues
-                    targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
-                    {
-                        Value = kvp.Value.Value,
-                        AITranslated = true,
-                        CreatedAt = kvp.Value.CreatedAt,
-                        UpdatedAt = kvp.Value.UpdatedAt
-                    };
-                }
+                // else
+                // {
+                //     // insert dummy key - this is to prevent missing translations in the target localisation item from causing issues
+                //     targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
+                //     {
+                //         Value = kvp.Value.Value,
+                //         AITranslated = true,
+                //         CreatedAt = kvp.Value.CreatedAt,
+                //         UpdatedAt = kvp.Value.UpdatedAt
+                //     };
+                // }
             }
 
             responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);
