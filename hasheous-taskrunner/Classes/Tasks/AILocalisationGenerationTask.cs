@@ -86,7 +86,7 @@ namespace hasheous_taskrunner.Classes.Tasks
             }
 
             // loop through all of the Translations in the english base language and compare with the variant - force translation if the date on the english translation is newer than the variant, or the translation doesn't exist in the variant
-            string model = GetRecommendedModel(targetCulture.Name);
+            string model = GetRecommendedModel(targetCulture.Name, true);
             int translationCount = 0;
             foreach (var kvp in enLocalisationItem.Translations)
             {
@@ -162,18 +162,6 @@ namespace hasheous_taskrunner.Classes.Tasks
             Dictionary<string, object> response = AITaskHelpers.HandleTranslationResult(targetLocalisationItem);
 
             return response;
-        }
-
-        private static string GetRecommendedModel(string localeCode)
-        {
-            var culture = new CultureInfo(localeCode);
-
-            if (culture.TwoLetterISOLanguageName == "en")
-                return "gemma3:12b";
-
-            return IsLatinScript(localeCode)
-                ? "translategemma:12b"
-                : "translategemma:27b";
         }
     }
 }

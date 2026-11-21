@@ -177,6 +177,15 @@ namespace hasheous_taskrunner.Classes.Helpers
             return await Task.FromResult(verificationResults);
         }
 
+        /// <summary>
+        /// Handles the result of an AI translation task and formats it into a standard response dictionary.
+        /// </summary>
+        /// <param name="targetLocalisationItem">
+        /// The localisation item containing the translations to be processed.
+        /// </param>
+        /// <returns>
+        /// A dictionary containing the result of the translation task, including the translated content and any error information.
+        /// </returns>
         public static Dictionary<string, object> HandleTranslationResult(LocalisationItem targetLocalisationItem)
         {
             Dictionary<string, object> responseVars = new Dictionary<string, object>();
@@ -215,6 +224,28 @@ namespace hasheous_taskrunner.Classes.Helpers
             }
 
             return response;
+        }
+
+
+        public static string GetRecommendedModel(string localeCode, bool translate)
+        {
+            var culture = new CultureInfo(localeCode);
+
+            if (culture.TwoLetterISOLanguageName == "en")
+                return "gemma3:12b";
+
+            if (translate)
+            {
+                return IsLatinScript(localeCode)
+                    ? "translategemma:12b"
+                    : "translategemma:27b";
+            }
+            else
+            {
+                return IsLatinScript(localeCode)
+                ? "gemma3:12b"
+                : "gemma3:27b";
+            }
         }
     }
 }
