@@ -126,6 +126,7 @@ namespace hasheous_taskrunner.Classes.Communication
             {
                 hasheous_taskrunner.Classes.Tasks.TaskType.AIDescriptionAndTagging => new AIDescriptionAndTaggingTask(),
                 hasheous_taskrunner.Classes.Tasks.TaskType.AILocalisationGeneration => new AILocalisationGenerationTask(),
+                hasheous_taskrunner.Classes.Tasks.TaskType.AILocalisationGenerationRegional => new AILocalisationGenerationRegionalTask(),
                 _ => null
             };
         }

@@ -215,6 +215,18 @@ namespace hasheous_taskrunner.Classes.Capabilities
             string model = Configuration?["model"] as string ?? string.Empty;
             string prompt = Configuration?["prompt"] as string ?? string.Empty;
 
+            int predict = 256;
+            if (parameters.ContainsKey("predict"))
+            {
+                predict = Convert.ToInt32(parameters["predict"]);
+            }
+
+            double temperature = 0.2;
+            if (parameters.ContainsKey("temperature"))
+            {
+                temperature = Convert.ToDouble(parameters["temperature"]);
+            }
+
             // allow overriding via parameters
             if (parameters != null)
             {
@@ -372,8 +384,8 @@ namespace hasheous_taskrunner.Classes.Capabilities
                     }
                     // Adjust parameters based on task type
                     int topK = isTagGeneration ? 10 : 5;
-                    int numPredict = isTagGeneration ? 512 : 256;
-                    double temperature = isTagGeneration ? 0.5 : 0.2;
+                    int numPredict = isTagGeneration ? 512 : predict;
+                    temperature = isTagGeneration ? 0.5 : temperature;
 
                     var topKResults = ranked
                         .OrderByDescending(r => r.score)
@@ -431,8 +443,8 @@ namespace hasheous_taskrunner.Classes.Capabilities
                         think = false,
                         options = new
                         {
-                            num_predict = 256,
-                            temperature = 0.2
+                            num_predict = predict,
+                            temperature = temperature
                         }
                     };
                     var genResp = await client.PostAsync<Dictionary<string, object>>("/api/generate", genBody);

@@ -106,7 +106,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                         EnglishName = targetCulture.EnglishName,
                         NativeName = targetCulture.NativeName,
                         Direction = targetCulture.TextInfo.IsRightToLeft ? LocalisationItem.LanguageDirection.RightToLeft : LocalisationItem.LanguageDirection.LeftToRight,
-                        Version = 1,
+                        Version = enLocalisationItem.Version,
                         Translations = new Dictionary<string, LocalisationItem.TranslationItem>()
                     };
                 else
@@ -130,7 +130,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 bool performTranslation = false;
 
                 // abort early if the string is empty or null
-                if (string.IsNullOrWhiteSpace(kvp.Value.Value))
+                if (!string.IsNullOrWhiteSpace(kvp.Value.Value))
                 {
                     performTranslation = true;
                 }
@@ -169,10 +169,12 @@ namespace hasheous_taskrunner.Classes.Tasks
                                     $"{kvp.Value.Value}";
 
                     var translatedString = await ai.ExecuteAsync(new Dictionary<string, object>
-                        {
-                            { "model", model },
-                            { "prompt", prompt },
-                        }, statusUpdate);
+                    {
+                        { "model", model },
+                        { "prompt", prompt },
+                        { "predict", -1 },
+                        { "temperature", 0.1 }
+                    }, statusUpdate);
 
                     if (translatedString != null && translatedString.ContainsKey(ResponseKey) && !string.IsNullOrWhiteSpace(translatedString[ResponseKey].ToString()))
                     {
@@ -185,17 +187,6 @@ namespace hasheous_taskrunner.Classes.Tasks
                         };
                     }
                 }
-                // else
-                // {
-                //     // insert dummy key - this is to prevent missing translations in the target localisation item from causing issues
-                //     targetLocalisationItem.Translations[kvp.Key] = new LocalisationItem.TranslationItem
-                //     {
-                //         Value = kvp.Value.Value,
-                //         AITranslated = true,
-                //         CreatedAt = kvp.Value.CreatedAt,
-                //         UpdatedAt = kvp.Value.UpdatedAt
-                //     };
-                // }
             }
 
             responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);

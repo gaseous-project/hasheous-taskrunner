@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS build-env
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 ARG TARGETARCH
 ARG BUILDPLATFORM
 WORKDIR /App
@@ -16,7 +16,7 @@ RUN dotnet restore "hasheous-taskrunner/hasheous-taskrunner.csproj" -a $TARGETAR
 RUN dotnet publish "hasheous-taskrunner/hasheous-taskrunner.csproj" --self-contained true -c Release -o out -a $TARGETARCH
 
 # Build runtime image - use minimal base since we have a self-contained executable
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
 ENV INDOCKER=1
 
 RUN apt update && apt upgrade -y && apt install -y iputils-ping && \

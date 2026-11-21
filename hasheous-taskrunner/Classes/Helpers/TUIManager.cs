@@ -139,7 +139,7 @@ namespace hasheous_taskrunner.Classes.Helpers
                     cancellationToken.Token.ThrowIfCancellationRequested();
 
                     // read the keyboard input and handle it accordingly
-                    if (Console.KeyAvailable)
+                    if (!Console.IsInputRedirected && Console.KeyAvailable)
                     {
                         var key = Console.ReadKey(intercept: true);
                         if (key.KeyChar == 'q' || key.KeyChar == 'Q')
@@ -259,7 +259,8 @@ namespace hasheous_taskrunner.Classes.Helpers
             if (_directOutput == null) return;
 
             // App title
-            string title = " Hasheous Task Runner ";
+            string title = " \e[1mHasheous Task Runner\e[22m ";
+
 
             // App version
             title += $"| Version: {Config.ClientVersion} ";
@@ -278,7 +279,7 @@ namespace hasheous_taskrunner.Classes.Helpers
             string rightInfo = $" {string.Join(" | ", rightInfoParts)} ";
 
             // Calculate padding
-            int padding = width - title.Length - rightInfo.Length - 2;
+            int padding = width - GetStringLength(title) - GetStringLength(rightInfo) - 2;
             if (padding < 0) padding = 0;
 
             // Draw top border with cyan color
