@@ -26,35 +26,7 @@ namespace hasheous_taskrunner.Classes.Tasks
         /// <inheritdoc/>
         public async Task<TaskVerificationResult> VerifyAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
         {
-            // check for required parameters
-            TaskVerificationResult verificationResults = new TaskVerificationResult();
-
-            if (parameters == null)
-            {
-                verificationResults.Status = TaskVerificationResult.VerificationStatus.Failure;
-                verificationResults.Details["parameters"] = "Parameters cannot be null.";
-                return await Task.FromResult(verificationResults);
-            }
-
-            if (!parameters.ContainsKey(LanguageKey))
-            {
-                verificationResults.Details[LanguageKey] = "Missing required parameter: language";
-            }
-            else
-            {
-                // language must be a valid two character ISO language code - check against cultureinfo
-                if (!parameters.TryGetValue(LanguageKey, out var lang) || !ValidCultures.Contains(lang))
-                {
-                    verificationResults.Details[LanguageKey] = $"Invalid language code: {lang}";
-                }
-            }
-
-            if (verificationResults.Details.Count > 0)
-            {
-                verificationResults.Status = TaskVerificationResult.VerificationStatus.Failure;
-            }
-
-            return await Task.FromResult(verificationResults);
+            return await VerifyTranslationAsync(parameters, cancellationToken);
         }
 
         /// <inheritdoc/>
