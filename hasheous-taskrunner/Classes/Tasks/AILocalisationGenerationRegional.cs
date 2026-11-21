@@ -85,8 +85,6 @@ namespace hasheous_taskrunner.Classes.Tasks
                     throw;
             }
 
-            Dictionary<string, object> responseVars = new Dictionary<string, object>();
-
             // loop through all of the Translations in the english base language and compare with the variant - force translation if the date on the english translation is newer than the variant, or the translation doesn't exist in the variant
             string model = GetRecommendedModel(targetCulture.Name);
             int translationCount = 0;
@@ -168,39 +166,7 @@ namespace hasheous_taskrunner.Classes.Tasks
                 }
             }
 
-            responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);
-
-            Dictionary<string, object> response = new Dictionary<string, object>
-            {
-                { ResultKey, true },
-                { ResponseKey, responseVars }
-            };
-
-            if (response.ContainsKey(ResultKey) && response[ResultKey] is bool resultBool && resultBool)
-            {
-                // success
-                // ollama sometimes returns the response wrapped in markdown code blocks, so strip those if present
-                if (response.ContainsKey(ResponseKey) && response[ResponseKey] is string respStr)
-                {
-                    respStr = respStr.Trim();
-                    if ((respStr.StartsWith("```") || respStr.StartsWith("```json")) && respStr.EndsWith("```"))
-                    {
-                        int firstLineEnd = respStr.IndexOf('\n');
-                        int lastLineStart = respStr.LastIndexOf("```");
-                        if (firstLineEnd >= 0 && lastLineStart > firstLineEnd)
-                        {
-                            respStr = respStr.Substring(firstLineEnd + 1, lastLineStart - firstLineEnd - 1).Trim();
-                        }
-                    }
-                    response[ResponseKey] = respStr;
-                }
-            }
-            else
-            {
-                // failure
-                response.Add(ResultKey, "");
-                response.Add(ErrorKey, response.ContainsKey(ErrorKey) ? response[ErrorKey] : "Unknown error from AI capability.");
-            }
+            Dictionary<string, object> response = AITaskHelpers.HandleTranslationResult(targetLocalisationItem);
 
             return response;
         }

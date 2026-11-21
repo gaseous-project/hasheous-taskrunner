@@ -1,5 +1,6 @@
 using System.Globalization;
 using hasheous_taskrunner.Classes.Tasks;
+using hasheous_taskrunner.Models;
 
 namespace hasheous_taskrunner.Classes.Helpers
 {
@@ -131,6 +132,12 @@ namespace hasheous_taskrunner.Classes.Helpers
             );
         }
 
+        // dictionary item key consts
+        private const string LanguageKey = "language";
+        private const string ResultKey = "result";
+        private const string ErrorKey = "error";
+        private const string ResponseKey = "response";
+
         /// <summary>
         /// Shared verification logic for AI translation tasks.
         /// </summary>
@@ -139,8 +146,6 @@ namespace hasheous_taskrunner.Classes.Helpers
         /// <returns></returns>
         public static async Task<TaskVerificationResult> VerifyTranslationAsync(Dictionary<string, string>? parameters, CancellationToken cancellationToken)
         {
-            string LanguageKey = "language";
-
             // check for required parameters
             TaskVerificationResult verificationResults = new TaskVerificationResult();
 
@@ -170,6 +175,46 @@ namespace hasheous_taskrunner.Classes.Helpers
             }
 
             return await Task.FromResult(verificationResults);
+        }
+
+        public static Dictionary<string, object> HandleTranslationResult(LocalisationItem targetLocalisationItem)
+        {
+            Dictionary<string, object> responseVars = new Dictionary<string, object>();
+            responseVars["translated"] = Newtonsoft.Json.JsonConvert.SerializeObject(targetLocalisationItem);
+
+            Dictionary<string, object> response = new Dictionary<string, object>
+            {
+                { ResultKey, true },
+                { ResponseKey, responseVars }
+            };
+
+            if (response.ContainsKey(ResultKey) && response[ResultKey] is bool resultBool && resultBool)
+            {
+                // success
+                // ollama sometimes returns the response wrapped in markdown code blocks, so strip those if present
+                if (response.ContainsKey(ResponseKey) && response[ResponseKey] is string respStr)
+                {
+                    respStr = respStr.Trim();
+                    if ((respStr.StartsWith("```") || respStr.StartsWith("```json")) && respStr.EndsWith("```"))
+                    {
+                        int firstLineEnd = respStr.IndexOf('\n');
+                        int lastLineStart = respStr.LastIndexOf("```");
+                        if (firstLineEnd >= 0 && lastLineStart > firstLineEnd)
+                        {
+                            respStr = respStr.Substring(firstLineEnd + 1, lastLineStart - firstLineEnd - 1).Trim();
+                        }
+                    }
+                    response[ResponseKey] = respStr;
+                }
+            }
+            else
+            {
+                // failure
+                response.Add(ResultKey, "");
+                response.Add(ErrorKey, response.ContainsKey(ErrorKey) ? response[ErrorKey] : "Unknown error from AI capability.");
+            }
+
+            return response;
         }
     }
 }
