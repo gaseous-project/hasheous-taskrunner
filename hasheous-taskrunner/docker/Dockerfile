@@ -19,9 +19,16 @@ RUN dotnet publish "hasheous-taskrunner/hasheous-taskrunner.csproj" --self-conta
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
 ENV INDOCKER=1
 
-RUN apt update && apt upgrade -y && apt install -y iputils-ping && \
-    # Create a non-root user for running the application
-    useradd -m -u 1000 appuser
+RUN apt update && apt upgrade -y && apt install -y iputils-ping
+
+# Create a non-root user for running the application
+RUN if getent passwd 1000 >/dev/null 2>&1; then \
+    EXISTING_USER=$(getent passwd 1000 | cut -d: -f1) && \
+    usermod -l appuser -d /home/appuser -m ${EXISTING_USER} && \
+    groupmod -n appuser ${EXISTING_USER}; \
+    else \
+    useradd -m -u 1000 appuser; \
+    fi
 
 WORKDIR /App
 
